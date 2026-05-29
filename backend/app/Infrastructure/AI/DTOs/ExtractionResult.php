@@ -15,11 +15,21 @@ readonly class ExtractionResult
     public static function fromArray(array $data): self
     {
         return new self(
-            entities: $data['entities'] ?? [],
-            relations: $data['relations'] ?? [],
-            patterns: $data['patterns'] ?? [],
-            hypotheses: $data['hypotheses'] ?? [],
-            reinterpretations: $data['reinterpretations'] ?? [],
+            entities: self::onlyArrays($data['entities'] ?? []),
+            relations: self::onlyArrays($data['relations'] ?? []),
+            patterns: self::onlyArrays($data['patterns'] ?? []),
+            hypotheses: self::onlyArrays($data['hypotheses'] ?? []),
+            reinterpretations: self::onlyArrays($data['reinterpretations'] ?? []),
         );
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function onlyArrays(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_filter($value, is_array(...)));
     }
 }

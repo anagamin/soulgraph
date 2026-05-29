@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Services\MessageProcessingDispatcher;
 use App\Application\Services\PsychologistChatService;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MessageResource;
-use App\Jobs\ProcessMessageJob;
 use App\Models\Message;
 use App\Models\PsychologistSession;
 use Illuminate\Http\JsonResponse;
@@ -37,8 +37,12 @@ class PsychologistController extends Controller
         return response()->json($session, 201);
     }
 
-    public function storeMessage(Request $request, string $id, PsychologistChatService $chat): JsonResponse
-    {
+    public function storeMessage(
+        Request $request,
+        string $id,
+        PsychologistChatService $chat,
+        MessageProcessingDispatcher $processing,
+    ): JsonResponse {
         $data = $request->validate(['content' => 'required|string']);
         $session = PsychologistSession::where('user_id', $request->user()->id)->findOrFail($id);
 
@@ -60,7 +64,7 @@ class PsychologistController extends Controller
             'processing_status' => 'skipped',
         ]);
 
-        ProcessMessageJob::dispatch($userMessage->id);
+        $processing->dispatch($userMessage->id);
 
         return response()->json([
             'user_message' => new MessageResource($userMessage),
@@ -68,8 +72,12 @@ class PsychologistController extends Controller
         ]);
     }
 
-    public function streamMessage(Request $request, string $id, PsychologistChatService $chat): StreamedResponse
-    {
+    public function streamMessage(
+        Request $request,
+        string $id,
+        PsychologistChatService $chat,
+        MessageProcessingDispatcher $processing,
+    ): StreamedResponse {
         $data = $request->validate(['content' => 'required|string']);
         $session = PsychologistSession::where('user_id', $request->user()->id)->findOrFail($id);
 
@@ -81,9 +89,7 @@ class PsychologistController extends Controller
             'processing_key' => (string) Str::uuid(),
         ]);
 
-        ProcessMessageJob::dispatch($userMessage->id);
-
-        return response()->stream(function () use ($chat, $session, $data) {
+        return response()->stream(function () use ($chat, $session, $data, $userMessage, $processing) {
             $full = '';
             foreach ($chat->streamReply($session, $data['content']) as $chunk) {
                 $full .= $chunk;
@@ -99,6 +105,8 @@ class PsychologistController extends Controller
                 'content' => $full,
                 'processing_status' => 'skipped',
             ]);
+
+            $processing->dispatch($userMessage->id);
 
             echo "data: [DONE]\n\n";
             ob_flush();

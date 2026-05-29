@@ -16,7 +16,23 @@ class SemanticExtractionService
 
     public function extractFromMessage(string $content, int $userId): ExtractionResult
     {
-        $prompt = "Извлеки семантические сущности и связи из сообщения пользователя:\n\n{$content}";
+        $entityTypes = 'person, place, event, epoch, emotion, interpretation, motivation, fear, identity, pattern, belief, value, goal, practice, relationship';
+        $layers = 'earth (facts: people, places, events), human (inner: emotions, motivations), sky (meaning: identity, beliefs, patterns)';
+
+        $prompt = <<<PROMPT
+Извлеки семантические сущности и связи из сообщения пользователя.
+Верни хотя бы 1–3 сущности, если в тексте есть конкретика (люди, места, события, чувства, убеждения).
+
+Типы сущностей: {$entityTypes}
+Слои (layer): {$layers}
+
+Для каждой сущности: temp_id (e1, e2…), type, layer, label, attributes, confidence (0–1).
+Связи: from/to — temp_id, type (например participated_in, felt, believes), confidence.
+
+Сообщение:
+{$content}
+PROMPT;
+
         $schema = [
             'entities' => [['temp_id', 'type', 'layer', 'label', 'attributes', 'confidence']],
             'relations' => [['from', 'to', 'type', 'confidence']],

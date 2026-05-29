@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Application\Services\InterviewChatService;
+use App\Application\Services\MessageProcessingDispatcher;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\InterviewSessionResource;
 use App\Http\Resources\MessageResource;
-use App\Jobs\ProcessMessageJob;
 use App\Models\InterviewSession;
 use App\Models\Message;
 use Illuminate\Http\JsonResponse;
@@ -51,8 +51,12 @@ class InterviewSessionController extends Controller
         return response()->json(new InterviewSessionResource($session));
     }
 
-    public function storeMessage(Request $request, string $id, InterviewChatService $chat): JsonResponse
-    {
+    public function storeMessage(
+        Request $request,
+        string $id,
+        InterviewChatService $chat,
+        MessageProcessingDispatcher $processing,
+    ): JsonResponse {
         $data = $request->validate(['content' => 'required|string']);
         $session = $request->user()->interviewSessions()->findOrFail($id);
 
@@ -61,7 +65,7 @@ class InterviewSessionController extends Controller
         $assistantContent = $chat->reply($session, $data['content']);
         $assistantMessage = $this->createAssistantMessage($session, $assistantContent);
 
-        ProcessMessageJob::dispatch($userMessage->id);
+        $processing->dispatch($userMessage->id);
 
         return response()->json([
             'user_message' => new MessageResource($userMessage),
@@ -69,15 +73,18 @@ class InterviewSessionController extends Controller
         ]);
     }
 
-    public function streamMessage(Request $request, string $id, InterviewChatService $chat): StreamedResponse
-    {
+    public function streamMessage(
+        Request $request,
+        string $id,
+        InterviewChatService $chat,
+        MessageProcessingDispatcher $processing,
+    ): StreamedResponse {
         $data = $request->validate(['content' => 'required|string']);
         $session = $request->user()->interviewSessions()->findOrFail($id);
 
         $userMessage = $this->createUserMessage($session, $data['content']);
-        ProcessMessageJob::dispatch($userMessage->id);
 
-        return response()->stream(function () use ($chat, $session, $data) {
+        return response()->stream(function () use ($chat, $session, $data, $userMessage, $processing) {
             $full = '';
             foreach ($chat->streamReply($session, $data['content']) as $chunk) {
                 $full .= $chunk;
@@ -87,6 +94,7 @@ class InterviewSessionController extends Controller
             }
 
             $this->createAssistantMessage($session, $full);
+            $processing->dispatch($userMessage->id);
             echo "data: [DONE]\n\n";
             ob_flush();
             flush();
@@ -97,7 +105,7 @@ class InterviewSessionController extends Controller
         ]);
     }
 
-    public function upload(Request $request, string $id): JsonResponse
+    public function upload(Request $request, string $id, MessageProcessingDispatcher $processing): JsonResponse
     {
         $data = $request->validate(['content' => 'required|string']);
         $session = $request->user()->interviewSessions()->findOrFail($id);
@@ -110,7 +118,7 @@ class InterviewSessionController extends Controller
             'processing_key' => (string) Str::uuid(),
         ]);
 
-        ProcessMessageJob::dispatch($message->id);
+        $processing->dispatch($message->id);
 
         return response()->json(new MessageResource($message), 201);
     }

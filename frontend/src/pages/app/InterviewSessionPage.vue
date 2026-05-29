@@ -19,13 +19,38 @@ const input = ref('')
 const streaming = ref(false)
 const streamContent = ref('')
 const entities = ref<unknown[]>([])
+const processingExtractions = ref(false)
 const chatRef = ref<HTMLElement | null>(null)
+
+async function loadExtractions() {
+  const ext = await api.get(`/interview/sessions/${sessionId.value}/extractions`)
+  entities.value = ext.data.entities ?? []
+}
 
 async function load() {
   const { data } = await api.get(`/interview/sessions/${sessionId.value}`)
   messages.value = data.data?.messages ?? data.messages ?? []
-  const ext = await api.get(`/interview/sessions/${sessionId.value}/extractions`)
-  entities.value = ext.data.entities ?? []
+  await loadExtractions()
+}
+
+function hasPendingUserMessages() {
+  return messages.value.some(
+    (m) => m.role === 'user' && m.processing_status === 'pending',
+  )
+}
+
+async function waitForExtractions(maxAttempts = 30) {
+  processingExtractions.value = true
+  try {
+    for (let i = 0; i < maxAttempts; i++) {
+      await load()
+      if (!hasPendingUserMessages()) break
+      await new Promise((r) => setTimeout(r, 1500))
+    }
+    await loadExtractions()
+  } finally {
+    processingExtractions.value = false
+  }
 }
 
 async function send() {
@@ -80,7 +105,7 @@ async function send() {
   messages.value.push({ id: 'tmp-a', role: 'assistant', content: streamContent.value })
   streamContent.value = ''
   streaming.value = false
-  await load()
+  await waitForExtractions()
 }
 
 function renderMd(text: string) {
@@ -111,11 +136,13 @@ onMounted(load)
 
     <aside class="glass rounded-2xl p-4">
       <h3 class="text-sm font-medium text-zinc-400">Извлечённые сущности</h3>
+      <p v-if="processingExtractions" class="mt-2 text-xs text-violet-400">Извлекаем из последнего сообщения…</p>
       <ul class="mt-4 space-y-2 text-xs">
         <li v-for="(e, i) in entities" :key="i" class="rounded border border-white/5 p-2">
-          {{ (e as { canonical_label?: string }).canonical_label ?? '—' }}
+          <span class="text-zinc-500">{{ (e as { layer?: string; type?: string }).layer }}/{{ (e as { type?: string }).type }}</span>
+          <div>{{ (e as { canonical_label?: string }).canonical_label ?? '—' }}</div>
         </li>
-        <li v-if="!entities.length" class="text-zinc-600">Появятся после обработки сообщений</li>
+        <li v-if="!entities.length && !processingExtractions" class="text-zinc-600">Появятся после обработки сообщений</li>
       </ul>
     </aside>
   </div>

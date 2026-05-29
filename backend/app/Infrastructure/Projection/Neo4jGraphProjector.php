@@ -43,7 +43,6 @@ class Neo4jGraphProjector
                 'status' => 'error',
                 'error' => $e->getMessage(),
             ]);
-            throw $e;
         }
     }
 
@@ -75,7 +74,6 @@ class Neo4jGraphProjector
                 'status' => 'error',
                 'error' => $e->getMessage(),
             ]);
-            throw $e;
         }
     }
 }

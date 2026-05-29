@@ -12,11 +12,17 @@ onMounted(async () => {
   const { data } = await api.get('/human/bridge')
   if (!container.value) return
 
+  const nodes = (data.nodes ?? []) as { id: string; label: string; layer: string }[]
+  const nodeIds = new Set(nodes.map((n) => n.id))
+  const edges = (data.edges ?? []).filter(
+    (e: { source: string; target: string }) => nodeIds.has(e.source) && nodeIds.has(e.target),
+  ) as { id: string; source: string; target: string; type: string }[]
+
   const elements = [
-    ...(data.nodes ?? []).map((n: { id: string; label: string; layer: string }) => ({
+    ...nodes.map((n) => ({
       data: { id: n.id, label: n.label, layer: n.layer },
     })),
-    ...(data.edges ?? []).map((e: { id: string; source: string; target: string; type: string }) => ({
+    ...edges.map((e) => ({
       data: { id: e.id, source: e.source, target: e.target, label: e.type },
     })),
   ]

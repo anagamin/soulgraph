@@ -53,8 +53,11 @@ class SkyController extends Controller
             'confidence' => $e->versions->first()?->confidence ?? 0.5,
         ])->values()->all();
 
+        $entityIds = $entities->pluck('id');
+
         $edges = Relation::where('user_id', $request->user()->id)
-            ->whereIn('source_entity_id', $entities->pluck('id'))
+            ->whereIn('source_entity_id', $entityIds)
+            ->whereIn('target_entity_id', $entityIds)
             ->get()
             ->map(fn ($r) => [
                 'source' => $r->source_entity_id,

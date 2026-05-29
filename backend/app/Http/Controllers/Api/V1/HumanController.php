@@ -12,20 +12,26 @@ class HumanController extends Controller
 {
     public function bridge(Request $request): JsonResponse
     {
-        $nodes = Entity::where('user_id', $request->user()->id)
+        $entities = Entity::where('user_id', $request->user()->id)
             ->whereIn('layer', ['human', 'earth'])
             ->with(['versions' => fn ($q) => $q->where('is_active', true)])
-            ->get()
-            ->map(fn (Entity $e) => [
+            ->get();
+
+        $entityIds = $entities->pluck('id');
+
+        $nodes = $entities->map(fn (Entity $e) => [
                 'id' => $e->id,
                 'layer' => $e->layer,
                 'type' => $e->type,
                 'label' => $e->canonical_label,
                 'intensity' => $e->versions->first()?->payload['intensity'] ?? 0.5,
                 'payload' => $e->versions->first()?->payload ?? [],
-            ]);
+            ])
+            ->values();
 
         $edges = Relation::where('user_id', $request->user()->id)
+            ->whereIn('source_entity_id', $entityIds)
+            ->whereIn('target_entity_id', $entityIds)
             ->with(['versions' => fn ($q) => $q->where('is_active', true)])
             ->get()
             ->map(fn (Relation $r) => [

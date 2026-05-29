@@ -69,4 +69,9 @@ class QdrantClient
     {
         return (string) Str::uuid();
     }
+
+    public function deleteCollection(string $name): void
+    {
+        Http::delete("{$this->baseUrl}/collections/{$name}");
+    }
 }

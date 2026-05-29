@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\EarthController;
 use App\Http\Controllers\Api\V1\HumanController;
 use App\Http\Controllers\Api\V1\InterviewSessionController;
 use App\Http\Controllers\Api\V1\PsychologistController;
+use App\Http\Controllers\Api\V1\SettingsController;
 use App\Http\Controllers\Api\V1\SkyController;
 use Illuminate\Support\Facades\Route;
 
@@ -18,6 +19,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/user', [AuthController::class, 'user']);
+        Route::post('/settings/reset', [SettingsController::class, 'reset']);
 
         Route::prefix('interview')->group(function () {
             Route::get('/sessions', [InterviewSessionController::class, 'index']);

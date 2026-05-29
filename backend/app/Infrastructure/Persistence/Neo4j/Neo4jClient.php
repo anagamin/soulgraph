@@ -69,9 +69,14 @@ class Neo4jClient
         }
     }
 
-    public function rebuildUserGraph(string $userId, array $entities, array $relations): void
+    public function deleteUserGraph(string $userId): void
     {
         $this->run('MATCH (e:Entity {user_id: $user_id}) DETACH DELETE e', ['user_id' => $userId]);
+    }
+
+    public function rebuildUserGraph(string $userId, array $entities, array $relations): void
+    {
+        $this->deleteUserGraph($userId);
 
         foreach ($entities as $entity) {
             $version = $entity->versions->where('is_active', true)->first();

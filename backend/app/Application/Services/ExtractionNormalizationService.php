@@ -20,44 +20,60 @@ class ExtractionNormalizationService
         $minConfidence = config('ai.extraction.min_confidence', 0.3);
 
         foreach ($extraction->entities as $item) {
-            if (($item['confidence'] ?? 0) < $minConfidence) {
+            if (! is_array($item) || ($item['confidence'] ?? 0) < $minConfidence) {
+                continue;
+            }
+
+            $tempId = $item['temp_id'] ?? null;
+            $type = $item['type'] ?? null;
+            $layer = $item['layer'] ?? null;
+            $label = $item['label'] ?? null;
+            if (! $tempId || ! $type || ! $layer || ! $label) {
                 continue;
             }
 
             $entity = Entity::create([
                 'user_id' => $message->user_id,
-                'type' => $item['type'],
-                'layer' => $item['layer'],
-                'canonical_label' => $item['label'],
+                'type' => $type,
+                'layer' => $layer,
+                'canonical_label' => $label,
             ]);
 
             EntityVersion::create([
                 'entity_id' => $entity->id,
                 'source_message_id' => $message->id,
                 'valid_from' => now(),
-                'payload' => $item['attributes'] ?? ['label' => $item['label']],
+                'payload' => $item['attributes'] ?? ['label' => $label],
                 'confidence' => $item['confidence'] ?? 0.5,
                 'is_active' => true,
             ]);
 
-            $tempMap[$item['temp_id']] = $entity->id;
+            $tempMap[$tempId] = $entity->id;
             $createdEntities[] = $entity->load('versions');
         }
 
         $createdRelations = [];
         foreach ($extraction->relations as $item) {
-            if (($item['confidence'] ?? 0) < $minConfidence) {
+            if (! is_array($item) || ($item['confidence'] ?? 0) < $minConfidence) {
                 continue;
             }
-            $sourceId = $tempMap[$item['from']] ?? null;
-            $targetId = $tempMap[$item['to']] ?? null;
+
+            $from = $item['from'] ?? null;
+            $to = $item['to'] ?? null;
+            $relationType = $item['type'] ?? null;
+            if (! $from || ! $to || ! $relationType) {
+                continue;
+            }
+
+            $sourceId = $tempMap[$from] ?? null;
+            $targetId = $tempMap[$to] ?? null;
             if (! $sourceId || ! $targetId) {
                 continue;
             }
 
             $relation = Relation::create([
                 'user_id' => $message->user_id,
-                'type' => $item['type'],
+                'type' => $relationType,
                 'source_entity_id' => $sourceId,
                 'target_entity_id' => $targetId,
             ]);
@@ -85,7 +101,17 @@ class ExtractionNormalizationService
 
     private function handleReinterpretation(Message $message, array $item, array $tempMap): void
     {
-        $entityId = $tempMap[$item['entity_ref']] ?? null;
+        $entityRef = $item['entity_ref'] ?? $item['entity_id'] ?? $item['temp_id'] ?? null;
+        $newMeaning = $item['new_meaning'] ?? $item['meaning'] ?? null;
+        if (! $entityRef || $newMeaning === null || $newMeaning === '') {
+            return;
+        }
+
+        if (($item['confidence'] ?? 0) < config('ai.extraction.min_confidence', 0.3)) {
+            return;
+        }
+
+        $entityId = $tempMap[$entityRef] ?? null;
         if (! $entityId) {
             return;
         }
@@ -100,24 +126,23 @@ class ExtractionNormalizationService
             'valid_until' => now(),
         ]);
 
-        $newVersion = EntityVersion::create([
+        EntityVersion::create([
             'entity_id' => $entity->id,
             'source_message_id' => $message->id,
             'valid_from' => now(),
-            'payload' => ['meaning' => $item['new_meaning']],
+            'payload' => ['meaning' => $newMeaning],
             'confidence' => $item['confidence'] ?? 0.5,
             'is_active' => true,
         ]);
 
-        if (! empty($item['evolves_from_temp_id']) && isset($tempMap[$item['evolves_from_temp_id']])) {
+        $evolvesFrom = $item['evolves_from_temp_id'] ?? null;
+        if ($evolvesFrom && isset($tempMap[$evolvesFrom])) {
             Relation::create([
                 'user_id' => $message->user_id,
                 'type' => 'evolves_into',
                 'source_entity_id' => $entity->id,
-                'target_entity_id' => $tempMap[$item['evolves_from_temp_id']],
+                'target_entity_id' => $tempMap[$evolvesFrom],
             ]);
         }
-
-        unset($newVersion);
     }
 }

@@ -1,0 +1,11 @@
+/vendor/
+/node_modules/
+/backend/vendor/
+/frontend/node_modules/
+/backend/.env
+/frontend/.env
+/backend/storage/*.key
+/backend/database/*.sqlite
+composer-setup.php
+composer.phar
+.DS_Store

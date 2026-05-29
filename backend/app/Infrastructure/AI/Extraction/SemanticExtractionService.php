@@ -24,21 +24,47 @@ class SemanticExtractionService
 Верни хотя бы 1–3 сущности, если в тексте есть конкретика (люди, места, события, чувства, убеждения).
 
 Типы сущностей: {$entityTypes}
-Слои (layer): {$layers}
+Слои (layer): {$layers} — в поле layer только одно слово: earth, human или sky.
 
-Для каждой сущности: temp_id (e1, e2…), type, layer, label, attributes, confidence (0–1).
-Связи: from/to — temp_id, type (например participated_in, felt, believes), confidence.
+Каждый элемент массивов entities, relations и т.д. — JSON-объект с именованными полями (не массив значений подряд).
 
 Сообщение:
 {$content}
 PROMPT;
 
         $schema = [
-            'entities' => [['temp_id', 'type', 'layer', 'label', 'attributes', 'confidence']],
-            'relations' => [['from', 'to', 'type', 'confidence']],
-            'patterns' => [['description', 'confidence']],
-            'hypotheses' => [['text', 'confidence']],
-            'reinterpretations' => [['entity_ref', 'new_meaning', 'evolves_from_temp_id', 'confidence']],
+            'entities' => [
+                [
+                    'temp_id' => 'e1',
+                    'type' => 'person',
+                    'layer' => 'earth',
+                    'label' => 'string',
+                    'attributes' => [],
+                    'confidence' => 0.9,
+                ],
+            ],
+            'relations' => [
+                [
+                    'from' => 'e1',
+                    'to' => 'e2',
+                    'type' => 'participated_in',
+                    'confidence' => 0.8,
+                ],
+            ],
+            'patterns' => [
+                ['description' => 'string', 'confidence' => 0.7],
+            ],
+            'hypotheses' => [
+                ['text' => 'string', 'confidence' => 0.6],
+            ],
+            'reinterpretations' => [
+                [
+                    'entity_ref' => 'e1',
+                    'new_meaning' => 'string',
+                    'evolves_from_temp_id' => null,
+                    'confidence' => 0.5,
+                ],
+            ],
         ];
 
         $started = microtime(true);

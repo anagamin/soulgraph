@@ -14,4 +14,10 @@ export async function initCsrf(): Promise<void> {
   await axios.get('/sanctum/csrf-cookie', { withCredentials: true })
 }
 
+export function csrfHeaders(): Record<string, string> {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/)
+  const token = match?.[1] ? decodeURIComponent(match[1]) : null
+  return token ? { 'X-XSRF-TOKEN': token } : {}
+}
+
 export default api

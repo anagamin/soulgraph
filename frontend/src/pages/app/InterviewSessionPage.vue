@@ -2,7 +2,7 @@
 import { onMounted, ref, computed, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { marked } from 'marked'
-import api, { initCsrf } from '@/shared/api/client'
+import api, { csrfHeaders, initCsrf } from '@/shared/api/client'
 
 interface Message {
   id: string
@@ -40,10 +40,21 @@ async function send() {
   await initCsrf()
   const response = await fetch(`/api/v1/interview/sessions/${sessionId.value}/messages/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ...csrfHeaders(),
+    },
     credentials: 'include',
     body: JSON.stringify({ content }),
   })
+
+  if (!response.ok) {
+    streaming.value = false
+    messages.value.pop()
+    input.value = content
+    throw new Error(`Stream failed: ${response.status}`)
+  }
 
   const reader = response.body?.getReader()
   const decoder = new TextDecoder()

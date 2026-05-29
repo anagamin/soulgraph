@@ -17,6 +17,7 @@ const style = ref('literary')
 const scope = ref('full')
 const selected = ref<Autobiography | null>(null)
 const editedContent = ref('')
+const generating = ref(false)
 
 const styles = [
   { value: 'neutral', label: 'Нейтральный' },
@@ -27,20 +28,67 @@ const styles = [
   { value: 'spiritual', label: 'Духовный' },
 ]
 
+function statusClass(status: string) {
+  if (status === 'completed') return 'text-green-400'
+  if (status === 'failed') return 'text-red-400'
+  if (status === 'processing') return 'text-blue-400'
+  return 'text-amber-400'
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: 'ожидание',
+    processing: 'генерация…',
+    completed: 'готово',
+    failed: 'ошибка',
+  }
+  return labels[status] ?? status
+}
+
 async function load() {
   const { data } = await api.get('/autobiographies')
   items.value = data.data ?? data
 }
 
+async function waitForCompletion(id: string, maxAttempts = 60) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const { data } = await api.get(`/autobiographies/${id}`)
+    selected.value = data
+    editedContent.value = data.content ?? ''
+
+    const idx = items.value.findIndex((item) => item.id === id)
+    if (idx >= 0) {
+      items.value[idx] = data
+    }
+
+    if (data.status === 'completed' || data.status === 'failed') {
+      return
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+  }
+}
+
 async function generate() {
-  const { data } = await api.post('/autobiographies/generate', {
-    title: title.value || 'Моя автобиография',
-    style: style.value,
-    scope: scope.value,
-  })
-  await load()
-  selected.value = data
-  editedContent.value = data.content ?? ''
+  if (generating.value) return
+  generating.value = true
+  try {
+    const { data } = await api.post('/autobiographies/generate', {
+      title: title.value || 'Моя автобиография',
+      style: style.value,
+      scope: scope.value,
+    })
+    selected.value = data
+    editedContent.value = data.content ?? ''
+    await load()
+
+    if (data.status === 'pending' || data.status === 'processing') {
+      await waitForCompletion(data.id)
+      await load()
+    }
+  } finally {
+    generating.value = false
+  }
 }
 
 async function saveVersion() {
@@ -73,7 +121,13 @@ onMounted(load)
       <select v-model="style" class="w-full rounded-lg border border-white/10 bg-black/30 px-4 py-2">
         <option v-for="s in styles" :key="s.value" :value="s.value">{{ s.label }}</option>
       </select>
-      <button class="w-full rounded-lg bg-violet-600 py-2 hover:bg-violet-500" @click="generate">Сгенерировать</button>
+      <button
+        class="w-full rounded-lg bg-violet-600 py-2 hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+        :disabled="generating"
+        @click="generate"
+      >
+        {{ generating ? 'Генерация…' : 'Сгенерировать' }}
+      </button>
       <ul class="space-y-2 border-t border-white/10 pt-4">
         <li
           v-for="item in items"
@@ -83,13 +137,19 @@ onMounted(load)
           @click="select(item)"
         >
           {{ item.title }} <span class="text-zinc-500">v{{ item.version }}</span>
-          <span class="ml-2 text-xs" :class="item.status === 'completed' ? 'text-green-400' : 'text-amber-400'">{{ item.status }}</span>
+          <span class="ml-2 text-xs" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span>
         </li>
       </ul>
     </div>
 
     <div class="glass rounded-2xl p-6 lg:col-span-2">
       <div v-if="selected" class="flex h-full flex-col">
+        <p v-if="selected.status === 'failed'" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+          Не удалось сгенерировать автобиографию. Проверьте GPTUNNEL_API_KEY и логи очереди.
+        </p>
+        <p v-else-if="generating || selected.status === 'pending' || selected.status === 'processing'" class="mb-4 text-sm text-zinc-400">
+          Генерация может занять несколько минут…
+        </p>
         <div class="mb-4 flex gap-2">
           <button class="rounded-lg border border-white/10 px-3 py-1 text-sm hover:bg-white/5" @click="saveVersion">Сохранить версию</button>
           <button class="rounded-lg border border-white/10 px-3 py-1 text-sm hover:bg-white/5" @click="exportMd">Экспорт MD</button>

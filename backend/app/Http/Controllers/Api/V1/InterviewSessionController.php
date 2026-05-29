@@ -26,7 +26,7 @@ class InterviewSessionController extends Controller
         return response()->json(InterviewSessionResource::collection($sessions));
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, InterviewChatService $chat): JsonResponse
     {
         $data = $request->validate([
             'title' => 'required|string|max:255',
@@ -41,7 +41,17 @@ class InterviewSessionController extends Controller
             'status' => 'active',
         ]);
 
-        return response()->json(new InterviewSessionResource($session), 201);
+        if ($session->mode === 'ai_interview') {
+            $opening = $chat->generateOpening($session);
+            if ($opening) {
+                $this->createAssistantMessage($session, $opening);
+            }
+        }
+
+        return response()->json(
+            new InterviewSessionResource($session->load('messages')),
+            201,
+        );
     }
 
     public function show(Request $request, string $id): JsonResponse

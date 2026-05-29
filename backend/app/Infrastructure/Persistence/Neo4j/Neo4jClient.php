@@ -60,7 +60,66 @@ class Neo4jClient
             $lines = [];
             foreach ($result['results'][0]['data'] ?? [] as $row) {
                 $row = $row['row'] ?? [];
-                $lines[] = ($row[0] ?? '').' ['.($row[2] ?? '').'/'.($row[1] ?? '').']';
+                $label = $row[0] ?? '';
+                $type = $row[1] ?? '';
+                $layer = $row[2] ?? '';
+                $rels = array_filter($row[3] ?? [], fn ($r) => $r !== null);
+                $relText = $rels ? ' → '.implode('; ', $rels) : ' → [нет связей]';
+                $lines[] = "{$label} [{$layer}/{$type}]{$relText}";
+            }
+
+            return implode("\n", $lines);
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    public function getGraphGaps(string $userId): string
+    {
+        try {
+            $lines = [];
+
+            $isolated = $this->run(
+                'MATCH (e:Entity {user_id: $user_id, active: true})
+                 WHERE NOT (e)-[:REL {active: true}]-()
+                 RETURN e.label AS label, e.type AS type, e.layer AS layer
+                 LIMIT 8',
+                ['user_id' => $userId],
+            );
+
+            foreach ($isolated['results'][0]['data'] ?? [] as $row) {
+                $row = $row['row'] ?? [];
+                $lines[] = '• Изолированный узел: '.($row[0] ?? '').' ['.($row[2] ?? '').'/'.($row[1] ?? '').']';
+            }
+
+            $layerGaps = $this->run(
+                'MATCH (e:Entity {user_id: $user_id, active: true, layer: "earth"})
+                 WHERE NOT (e)-[:REL {active: true}]-(:Entity {user_id: $user_id, layer: "human"})
+                 RETURN e.label AS label
+                 LIMIT 5',
+                ['user_id' => $userId],
+            );
+
+            foreach ($layerGaps['results'][0]['data'] ?? [] as $row) {
+                $row = $row['row'] ?? [];
+                if ($row[0] ?? null) {
+                    $lines[] = '• Событие без переживания: '.$row[0].' (Земля → Человек?)';
+                }
+            }
+
+            $humanGaps = $this->run(
+                'MATCH (e:Entity {user_id: $user_id, active: true, layer: "human"})
+                 WHERE NOT (e)-[:REL {active: true}]-(:Entity {user_id: $user_id, layer: "sky"})
+                 RETURN e.label AS label
+                 LIMIT 5',
+                ['user_id' => $userId],
+            );
+
+            foreach ($humanGaps['results'][0]['data'] ?? [] as $row) {
+                $row = $row['row'] ?? [];
+                if ($row[0] ?? null) {
+                    $lines[] = '• Переживание без смысла: '.$row[0].' (Человек → Небо?)';
+                }
             }
 
             return implode("\n", $lines);

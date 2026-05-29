@@ -18,7 +18,7 @@ return [
     ],
 
     'interview' => [
-        'prompt_version' => 'interview/v1',
+        'prompt_version' => 'interview/v2',
     ],
 
     'psychologist' => [

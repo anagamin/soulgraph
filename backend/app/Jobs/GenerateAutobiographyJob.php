@@ -20,23 +20,37 @@ class GenerateAutobiographyJob implements ShouldQueue
         $autobiography = Autobiography::with('user')->findOrFail($this->autobiographyId);
         $user = $autobiography->user;
         if (! $user) {
+            $autobiography->update(['status' => 'failed']);
+
             return;
         }
 
-        $autobiography->update(['status' => 'processing']);
+        try {
+            $autobiography->update(['status' => 'processing']);
 
-        $ctx = $context->assembleForUser($user, $autobiography->title);
-        $prompt = "Напиши автобиографию в стиле «{$autobiography->style}» на русском.\n"
-            ."Область: {$autobiography->scope}\n\nКонтекст:\n{$ctx}";
+            $ctx = $context->assembleForUser($user, $autobiography->title);
+            $prompt = "Напиши автобиографию в стиле «{$autobiography->style}» на русском.\n"
+                ."Область: {$autobiography->scope}\n\nКонтекст:\n{$ctx}";
 
-        $response = $ai->chat(
-            [['role' => 'user', 'content' => $prompt]],
-            new ChatOptions(temperature: 0.8, maxTokens: 4096),
-        );
+            $response = $ai->chat(
+                [['role' => 'user', 'content' => $prompt]],
+                new ChatOptions(temperature: 0.8, maxTokens: 4096),
+            );
 
-        $autobiography->update([
-            'content' => $response->content,
-            'status' => 'completed',
-        ]);
+            $autobiography->update([
+                'content' => $response->content,
+                'status' => 'completed',
+            ]);
+        } catch (\Throwable $e) {
+            $autobiography->update(['status' => 'failed']);
+            throw $e;
+        }
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        Autobiography::where('id', $this->autobiographyId)
+            ->whereIn('status', ['pending', 'processing'])
+            ->update(['status' => 'failed']);
     }
 }

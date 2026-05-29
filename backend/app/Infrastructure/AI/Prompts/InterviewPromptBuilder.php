@@ -2,9 +2,11 @@
 
 namespace App\Infrastructure\AI\Prompts;
 
+use App\Domain\Interview\Enums\InterviewSessionType;
+
 class InterviewPromptBuilder
 {
-    public function systemPrompt(string $sessionType, ?string $summary = null): string
+    public function systemPrompt(string $sessionType, ?string $summary = null, ?string $graphContext = null): string
     {
         $base = <<<'PROMPT'
 Ты — SoulGraph: автобиограф, когнитивный картограф и аналитик паттернов.
@@ -16,14 +18,102 @@ class InterviewPromptBuilder
 - задавать один глубокий вопрос за раз;
 - уважать противоречия и эволюцию смысла во времени.
 
-Отвечай на русском. Используй markdown для структуры. Будь тёплым, но точным.
+Стратегия интервью — ориентируйся на граф личности:
+1. Изучи «Пробелы и гипотезы» ниже: изолированные узлы, разрывы между слоями (Земля→Человек→Небо), неподтверждённые гипотезы.
+2. Каждый вопрос должен продвигать непрерывную линию событий: уточняй хронологию, причинно-следственные связи, переходы между периодами.
+3. Формулируй гипотезы явно («Похоже, X связано с Y — так ли это?») и углубляйся после подтверждения.
+4. НЕ повторяй и НЕ перефразируй вопросы, на которые уже получен ответ. Перечитай историю диалога.
+5. Если текущая ветка исчерпана — переходи к смежному узлу через связь в графе, а не начинай тему заново.
+6. Избегай общих вопросов («расскажите о себе», «что для вас важно») — будь конкретным, опираясь на уже известные факты.
+
+Тон: тёплый, но точный. Отвечай на русском. Используй markdown для структуры.
 PROMPT;
 
-        $context = "Тип сессии: {$sessionType}.";
-        if ($summary) {
-            $context .= "\nКонтекст сессии:\n{$summary}";
+        $parts = [$base, $this->sessionTypeGuide($sessionType)];
+
+        if ($graphContext) {
+            $parts[] = "=== Контекст графа и пробелы ===\n{$graphContext}";
         }
 
-        return $base."\n\n".$context;
+        if ($summary) {
+            $parts[] = "Контекст сессии:\n{$summary}";
+        }
+
+        return implode("\n\n", $parts);
+    }
+
+    public function openingUserTrigger(string $sessionType): string
+    {
+        $theme = $this->sessionTypeLabel($sessionType);
+
+        return <<<PROMPT
+[Начало сессии]
+Сессия «{$theme}» только что открыта. Собеседник ещё ничего не написал.
+
+Твоя задача:
+- коротко поприветствовать (1–2 предложения);
+- обозначить фокус сессии в контексте темы;
+- задать один конкретный, глубокий открывающий вопрос — не общий, а привязанный к теме «{$theme}»;
+- если в контексте графа есть известные узлы по этой теме — отталкивайся от них;
+- не проси «расскажите всё» — веди интервью сам.
+PROMPT;
+    }
+
+    public function shouldGenerateOpening(string $sessionType): bool
+    {
+        return $sessionType !== InterviewSessionType::OpenExploration->value;
+    }
+
+    private function sessionTypeLabel(string $sessionType): string
+    {
+        return match ($sessionType) {
+            InterviewSessionType::LifePeriod->value => 'Жизненный период',
+            InterviewSessionType::Relationship->value => 'Отношения',
+            InterviewSessionType::Fear->value => 'Страх',
+            InterviewSessionType::Identity->value => 'Идентичность',
+            InterviewSessionType::Spirituality->value => 'Духовность',
+            InterviewSessionType::Childhood->value => 'Детство',
+            InterviewSessionType::OpenExploration->value => 'Свободное исследование',
+            default => $sessionType,
+        };
+    }
+
+    private function sessionTypeGuide(string $sessionType): string
+    {
+        $label = $this->sessionTypeLabel($sessionType);
+
+        $focus = match ($sessionType) {
+            InterviewSessionType::LifePeriod->value => <<<'GUIDE'
+Фокус: конкретный отрезок жизни — границы периода, ключевые поворотные точки, люди и места, как период начался и чем завершился.
+Открывающие направления: «Когда этот период начался для вас?», «Что стало точкой входа?», «Чем он отличался от предыдущего?»
+GUIDE,
+            InterviewSessionType::Relationship->value => <<<'GUIDE'
+Фокус: значимые отношения — как начались, как развивались, переломные моменты, что осталось неразрешённым.
+Открывающие направления: «С кем из близких людей вы хотите разобраться сейчас?», «Как вы познакомились / вошли в эту связь?»
+GUIDE,
+            InterviewSessionType::Fear->value => <<<'GUIDE'
+Фокус: конкретный страх или тревога — первое появление, триггеры, как проявляется в теле и поведении, чего боится избегать.
+Открывающие направления: «Какой страх сейчас наиболее живой?», «Когда вы впервые его заметили?»
+GUIDE,
+            InterviewSessionType::Identity->value => <<<'GUIDE'
+Фокус: образ себя — роли, самоопределения, противоречия («я — и…, но также…»), как менялось «кто я» во времени.
+Открывающие направления: «Как вы сейчас себя называете / определяете?», «Когда это ощущение «я» сформировалось?»
+GUIDE,
+            InterviewSessionType::Spirituality->value => <<<'GUIDE'
+Фокус: смысл, вера, практики, трансцендентный опыт — что даёт опору, что потеряно, как менялось мировоззрение.
+Открывающие направления: «Что для вас сейчас является духовной опорой?», «Был ли момент, когда ваша картина мира изменилась?»
+GUIDE,
+            InterviewSessionType::Childhood->value => <<<'GUIDE'
+Фокус: ранние годы — дом, семья, первые переживания, формирующие события, что запомнилось телом и образами.
+Открывающие направления: «Каким вы помните своё детство — одним словом или образом?», «Какая сцена из детства всплывает первой?»
+GUIDE,
+            InterviewSessionType::OpenExploration->value => <<<'GUIDE'
+Фокус: свободное исследование — следуй за тем, что приносит собеседник. Не навязывай тему.
+На старте НЕ задавай вопрос первым — жди, пока человек сам начнёт.
+GUIDE,
+            default => 'Фокус: глубокое исследование темы сессии.',
+        };
+
+        return "Тип сессии: {$label}.\n{$focus}";
     }
 }

@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Services\AutobiographyGenerationDispatcher;
 use App\Http\Controllers\Controller;
-use App\Jobs\GenerateAutobiographyJob;
 use App\Models\Autobiography;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,7 +20,7 @@ class AutobiographyController extends Controller
         return response()->json($items);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, AutobiographyGenerationDispatcher $generation): JsonResponse
     {
         $data = $request->validate([
             'title' => 'required|string|max:255',
@@ -39,9 +39,11 @@ class AutobiographyController extends Controller
             'status' => 'pending',
         ]);
 
-        GenerateAutobiographyJob::dispatch($autobiography->id);
+        $generation->dispatch($autobiography->id);
 
-        return response()->json($autobiography, 202);
+        $autobiography->refresh();
+
+        return response()->json($autobiography, config('queue.default') === 'sync' ? 201 : 202);
     }
 
     public function show(Request $request, string $id): JsonResponse

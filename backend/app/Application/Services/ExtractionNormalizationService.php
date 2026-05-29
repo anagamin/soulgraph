@@ -9,6 +9,7 @@ use App\Models\Message;
 use App\Models\Relation;
 use App\Models\RelationVersion;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 
 class ExtractionNormalizationService
 {
@@ -16,6 +17,16 @@ class ExtractionNormalizationService
      * @return array{entities: array, relations: array}
      */
     public function normalize(Message $message, ExtractionResult $extraction): array
+    {
+        return DB::transaction(function () use ($message, $extraction) {
+            return $this->persistExtraction($message, $extraction);
+        });
+    }
+
+    /**
+     * @return array{entities: array, relations: array}
+     */
+    private function persistExtraction(Message $message, ExtractionResult $extraction): array
     {
         $tempMap = [];
         $createdEntities = [];

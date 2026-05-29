@@ -36,6 +36,20 @@ class ProcessMessageJob implements ShouldQueue
             $message->update(['processing_status' => 'processing']);
 
             $result = $extraction->extractFromMessage($message->content, $message->user_id);
+
+            if (! Message::whereKey($message->id)->exists()) {
+                $jobLog->log([
+                    'user_id' => $message->user_id,
+                    'job_class' => self::class,
+                    'payload_summary' => ['message_id' => $message->id],
+                    'status' => 'skipped',
+                    'exception' => 'Source message was removed before extraction could be persisted.',
+                    'duration_ms' => (int) ((microtime(true) - $started) * 1000),
+                ]);
+
+                return;
+            }
+
             $normalized = $normalizer->normalize($message, $result);
 
             foreach ($normalized['entities'] as $entity) {

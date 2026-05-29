@@ -14,6 +14,6 @@ class MessageProcessingDispatcher
             return;
         }
 
-        ProcessMessageJob::dispatch($messageId);
+        ProcessMessageJob::dispatch($messageId)->afterCommit();
     }
 }

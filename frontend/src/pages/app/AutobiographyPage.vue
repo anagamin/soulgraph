@@ -9,6 +9,7 @@ interface Autobiography {
   content: string
   status: string
   version: number
+  scope_params?: { generation_error?: string }
 }
 
 const items = ref<Autobiography[]>([])
@@ -145,7 +146,8 @@ onMounted(load)
     <div class="glass rounded-2xl p-6 lg:col-span-2">
       <div v-if="selected" class="flex h-full flex-col">
         <p v-if="selected.status === 'failed'" class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          Не удалось сгенерировать автобиографию. Проверьте GPTUNNEL_API_KEY и логи очереди.
+          <span v-if="selected.scope_params?.generation_error">{{ selected.scope_params.generation_error }}</span>
+          <span v-else>Не удалось сгенерировать автобиографию. Проверьте GPTUNNEL_API_KEY и перезапустите очередь: php artisan queue:work --timeout=360</span>
         </p>
         <p v-else-if="generating || selected.status === 'pending' || selected.status === 'processing'" class="mb-4 text-sm text-zinc-400">
           Генерация может занять несколько минут…

@@ -19,7 +19,7 @@ cd backend
 cp .env.example .env   # or use root .env.example as reference
 php artisan migrate
 # При QUEUE_CONNECTION=database (см. .env) — в отдельном терминале:
-php artisan queue:work
+php artisan queue:work --timeout=360
 php artisan serve
 
 # Frontend

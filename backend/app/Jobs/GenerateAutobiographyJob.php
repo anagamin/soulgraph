@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Application\Services\AutobiographyGenerationState;
 use App\Application\Services\AutobiographyGeneratorService;
 use App\Models\Autobiography;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,12 +13,16 @@ class GenerateAutobiographyJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $timeout = 900;
+    public int $timeout = 360;
 
     public function __construct(public string $autobiographyId) {}
 
     public function handle(AutobiographyGeneratorService $generator): void
     {
+        if (config('queue.default') === 'sync') {
+            @set_time_limit(0);
+        }
+
         $autobiography = Autobiography::with('user')->findOrFail($this->autobiographyId);
         $user = $autobiography->user;
         if (! $user) {
@@ -29,25 +34,44 @@ class GenerateAutobiographyJob implements ShouldQueue
         try {
             $autobiography->update(['status' => 'processing']);
 
-            $autobiography->update([
-                'content' => $generator->generate($autobiography),
-                'status' => 'completed',
-            ]);
+            if ($generator->shouldUseMultiPass($autobiography)) {
+                $generator->startMultiPassPipeline($autobiography->fresh());
+
+                return;
+            }
+
+            $content = $generator->generateSinglePass($autobiography);
+            AutobiographyGenerationState::complete($autobiography, $content);
         } catch (\Throwable $e) {
+            AutobiographyGenerationState::fail($autobiography, $e->getMessage());
             Log::error('Autobiography generation failed', [
                 'autobiography_id' => $this->autobiographyId,
                 'user_id' => $user->id,
                 'message' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
-            $autobiography->update(['status' => 'failed']);
             throw $e;
         }
     }
 
     public function failed(?\Throwable $exception): void
     {
-        Autobiography::where('id', $this->autobiographyId)
-            ->whereIn('status', ['pending', 'processing'])
-            ->update(['status' => 'failed']);
+        $autobiography = Autobiography::find($this->autobiographyId);
+        if (! $autobiography) {
+            return;
+        }
+
+        if ($exception) {
+            AutobiographyGenerationState::fail($autobiography, $exception->getMessage());
+            Log::error('Autobiography generation job failed', [
+                'autobiography_id' => $this->autobiographyId,
+                'message' => $exception->getMessage(),
+                'exception' => $exception::class,
+            ]);
+        } else {
+            Autobiography::where('id', $this->autobiographyId)
+                ->whereIn('status', ['pending', 'processing'])
+                ->update(['status' => 'failed']);
+        }
     }
 }

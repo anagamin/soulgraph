@@ -46,5 +46,6 @@ return [
         'single_pass_max_entities' => (int) env('AUTOBIOGRAPHY_SINGLE_PASS_MAX_ENTITIES', 12),
         'batch_size' => (int) env('AUTOBIOGRAPHY_BATCH_SIZE', 8),
         'neighbors_per_seed' => (int) env('AUTOBIOGRAPHY_NEIGHBORS_PER_SEED', 4),
+        'max_batches' => (int) env('AUTOBIOGRAPHY_MAX_BATCHES', 12),
     ],
 ];

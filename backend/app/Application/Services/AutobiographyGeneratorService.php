@@ -4,8 +4,12 @@ namespace App\Application\Services;
 
 use App\Infrastructure\AI\Contracts\AiProviderInterface;
 use App\Infrastructure\AI\DTOs\ChatOptions;
+use App\Jobs\GenerateAutobiographyBatchJob;
+use App\Jobs\GenerateAutobiographyOutlineJob;
+use App\Jobs\MergeAutobiographyJob;
 use App\Models\Autobiography;
-use App\Models\User;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
 
 class AutobiographyGeneratorService
 {
@@ -15,25 +19,52 @@ class AutobiographyGeneratorService
         private AutobiographyPlanner $planner,
     ) {}
 
-    public function generate(Autobiography $autobiography): string
+    public function shouldUseMultiPass(Autobiography $autobiography): bool
     {
-        $user = $autobiography->user;
-        $plan = $this->planner->plan($user, $autobiography->scope);
-        $entityCount = $plan['ranked']->count();
-
-        $useMultiPass = config('ai.autobiography.multi_pass', true)
-            && $entityCount > (int) config('ai.autobiography.single_pass_max_entities', 12);
-
-        if (! $useMultiPass || $plan['batches'] === []) {
-            return $this->generateSinglePass($autobiography, $user);
+        if (! config('ai.autobiography.multi_pass', true)) {
+            return false;
         }
 
-        return $this->generateMultiPass($autobiography, $user, $plan);
+        $plan = $this->planner->plan($autobiography->user, $autobiography->scope);
+        $threshold = (int) config('ai.autobiography.single_pass_max_entities', 12);
+
+        return $plan['ranked']->count() > $threshold && $plan['batches'] !== [];
     }
 
-    private function generateSinglePass(Autobiography $autobiography, User $user): string
+    public function startMultiPassPipeline(Autobiography $autobiography): void
     {
-        $ctx = $this->context->assembleForAutobiography($user, $autobiography->scope);
+        $plan = $this->planner->plan($autobiography->user, $autobiography->scope);
+        $maxBatches = (int) config('ai.autobiography.max_batches', 12);
+        $batches = array_slice($plan['batches'], 0, $maxBatches);
+
+        AutobiographyGenerationState::init($autobiography, [
+            'batches' => $batches,
+            'labels' => $plan['labels'],
+        ]);
+
+        $jobs = [new GenerateAutobiographyOutlineJob($autobiography->id)];
+        foreach (array_keys($batches) as $index) {
+            $jobs[] = new GenerateAutobiographyBatchJob($autobiography->id, $index);
+        }
+        $jobs[] = new MergeAutobiographyJob($autobiography->id);
+
+        $autobiographyId = $autobiography->id;
+
+        Bus::chain($jobs)->catch(function (\Throwable $e) use ($autobiographyId) {
+            $autobiography = Autobiography::find($autobiographyId);
+            if ($autobiography) {
+                AutobiographyGenerationState::fail($autobiography, $e->getMessage());
+            }
+            Log::error('Autobiography pipeline failed', [
+                'autobiography_id' => $autobiographyId,
+                'message' => $e->getMessage(),
+            ]);
+        })->dispatch();
+    }
+
+    public function generateSinglePass(Autobiography $autobiography): string
+    {
+        $ctx = $this->context->assembleForAutobiography($autobiography->user, $autobiography->scope);
 
         $response = $this->ai->chat(
             [['role' => 'user', 'content' => $this->basePrompt($autobiography)."\n\nКонтекст:\n{$ctx}"]],
@@ -43,38 +74,67 @@ class AutobiographyGeneratorService
         return $response->content;
     }
 
-    /**
-     * @param  array{
-     *   ranked: \Illuminate\Support\Collection,
-     *   batches: list<list<string>>,
-     *   labels: list<string>
-     * }  $plan
-     */
-    private function generateMultiPass(Autobiography $autobiography, User $user, array $plan): string
+    public function generateOutline(Autobiography $autobiography): string
     {
-        $outlineCtx = $this->context->assembleAutobiographyOutline($user, $plan['ranked']);
-        $outlineResponse = $this->ai->chat(
-            [['role' => 'user', 'content' => $this->outlinePrompt($autobiography, $plan['labels'])."\n\n{$outlineCtx}"]],
-            $this->chatOptions(temperature: 0.5, maxTokens: 2048),
-        );
-        $outline = $outlineResponse->content;
-
-        $fragments = [];
-        foreach ($plan['batches'] as $index => $entityIds) {
-            $batchCtx = $this->context->assembleEntityBatch($user, $entityIds);
-            $batchResponse = $this->ai->chat(
-                [['role' => 'user', 'content' => $this->batchPrompt($autobiography, $outline, $index + 1, count($plan['batches']))."\n\n{$batchCtx}"]],
-                $this->chatOptions(temperature: 0.75, maxTokens: 2500),
-            );
-            $fragments[] = $batchResponse->content;
+        $state = AutobiographyGenerationState::read($autobiography->fresh());
+        if (! $state) {
+            throw new \RuntimeException('Generation state missing for outline step.');
         }
 
-        $mergeResponse = $this->ai->chat(
-            [['role' => 'user', 'content' => $this->mergePrompt($autobiography, $outline, $fragments)]],
+        $outlineCtx = $this->context->assembleAutobiographyOutline(
+            $autobiography->user,
+            $this->planner->plan($autobiography->user, $autobiography->scope)['ranked'],
+        );
+
+        $response = $this->ai->chat(
+            [['role' => 'user', 'content' => $this->outlinePrompt($autobiography, $state['labels'])."\n\n{$outlineCtx}"]],
+            $this->chatOptions(temperature: 0.5, maxTokens: 2048),
+        );
+
+        return $response->content;
+    }
+
+    public function generateBatch(Autobiography $autobiography, int $batchIndex): string
+    {
+        $state = AutobiographyGenerationState::read($autobiography->fresh());
+        if (! $state || ! isset($state['batches'][$batchIndex], $state['outline'])) {
+            throw new \RuntimeException("Generation state incomplete for batch {$batchIndex}.");
+        }
+
+        $entityIds = $state['batches'][$batchIndex];
+        $batchCtx = $this->context->assembleEntityBatch($autobiography->user, $entityIds);
+        $total = count($state['batches']);
+
+        $response = $this->ai->chat(
+            [['role' => 'user', 'content' => $this->batchPrompt(
+                $autobiography,
+                $state['outline'],
+                $batchIndex + 1,
+                $total,
+            )."\n\n{$batchCtx}"]],
+            $this->chatOptions(temperature: 0.75, maxTokens: 2500),
+        );
+
+        return $response->content;
+    }
+
+    public function mergeFragments(Autobiography $autobiography): string
+    {
+        $state = AutobiographyGenerationState::read($autobiography->fresh());
+        if (! $state || empty($state['outline']) || empty($state['fragments'])) {
+            throw new \RuntimeException('Generation state incomplete for merge step.');
+        }
+
+        $response = $this->ai->chat(
+            [['role' => 'user', 'content' => $this->mergePrompt(
+                $autobiography,
+                $state['outline'],
+                $state['fragments'],
+            )]],
             $this->chatOptions(temperature: 0.7, maxTokens: 6000),
         );
 
-        return $mergeResponse->content;
+        return $response->content;
     }
 
     private function basePrompt(Autobiography $autobiography): string

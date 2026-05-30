@@ -41,7 +41,7 @@ class AutobiographyGenerationState
             'labels' => $plan['labels'],
             'batch_count' => count($plan['batches']),
         ];
-        $params['generation_step'] = 'outline';
+        self::applyStep($params, 'outline');
         unset($params['generation_error']);
 
         $autobiography->update(['scope_params' => $params]);
@@ -167,9 +167,11 @@ class AutobiographyGenerationState
         $params = $autobiography->scope_params ?? [];
         unset(
             $params['generation_step'],
+            $params['generation_step_at'],
             $params['generation_error'],
             $params['generation_run_id'],
             $params['generation_meta'],
+            $params['generation_log'],
         );
 
         $autobiography->update([
@@ -179,11 +181,32 @@ class AutobiographyGenerationState
         ]);
     }
 
-    private static function setStep(Autobiography $autobiography, string $step): void
+    public static function setStep(Autobiography $autobiography, string $step): void
     {
         $params = $autobiography->scope_params ?? [];
-        $params['generation_step'] = $step;
+        self::applyStep($params, $step);
         $autobiography->update(['scope_params' => $params]);
+    }
+
+    public static function logProgress(Autobiography $autobiography, string $message): void
+    {
+        $params = $autobiography->scope_params ?? [];
+        $log = $params['generation_log'] ?? [];
+        $log[] = [
+            'at' => now()->toIso8601String(),
+            'message' => mb_substr($message, 0, 500),
+        ];
+        $params['generation_log'] = array_slice($log, -8);
+        $autobiography->update(['scope_params' => $params]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    private static function applyStep(array &$params, string $step): void
+    {
+        $params['generation_step'] = $step;
+        $params['generation_step_at'] = now()->toIso8601String();
     }
 
     private static function clearCache(string $autobiographyId): void

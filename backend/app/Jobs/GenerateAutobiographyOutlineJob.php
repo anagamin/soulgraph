@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Application\Services\AutobiographyGenerationState;
 use App\Application\Services\AutobiographyGeneratorService;
+use App\Application\Services\AutobiographyPipelineDispatcher;
 use App\Jobs\Concerns\ValidatesAutobiographyRun;
 use App\Models\Autobiography;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -30,9 +31,17 @@ class GenerateAutobiographyOutlineJob implements ShouldQueue
             return;
         }
 
+        AutobiographyGenerationState::setStep($autobiography, 'outline:started');
+        Log::info('Autobiography outline job started', [
+            'autobiography_id' => $this->autobiographyId,
+            'run_id' => $this->runId,
+        ]);
+
         try {
             $outline = $generator->generateOutline($autobiography);
             AutobiographyGenerationState::saveOutline($autobiography, $outline);
+            AutobiographyGenerationState::logProgress($autobiography, 'План сохранён, запуск фрагментов…');
+            AutobiographyPipelineDispatcher::afterOutline($autobiography->fresh(), $this->runId);
         } catch (\Throwable $e) {
             $this->failGeneration($autobiography, $e);
 

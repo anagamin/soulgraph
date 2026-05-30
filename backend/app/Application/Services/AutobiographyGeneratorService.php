@@ -4,11 +4,7 @@ namespace App\Application\Services;
 
 use App\Infrastructure\AI\Contracts\AiProviderInterface;
 use App\Infrastructure\AI\DTOs\ChatOptions;
-use App\Jobs\GenerateAutobiographyBatchJob;
-use App\Jobs\GenerateAutobiographyOutlineJob;
-use App\Jobs\MergeAutobiographyJob;
 use App\Models\Autobiography;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 
 class AutobiographyGeneratorService
@@ -42,25 +38,7 @@ class AutobiographyGeneratorService
             'labels' => $plan['labels'],
         ]);
 
-        $jobs = [new GenerateAutobiographyOutlineJob($autobiography->id, $runId)];
-        foreach (array_keys($batches) as $index) {
-            $jobs[] = new GenerateAutobiographyBatchJob($autobiography->id, $runId, $index);
-        }
-        $jobs[] = new MergeAutobiographyJob($autobiography->id, $runId);
-
-        $autobiographyId = $autobiography->id;
-
-        Bus::chain($jobs)->catch(function (\Throwable $e) use ($autobiographyId) {
-            $autobiography = Autobiography::find($autobiographyId);
-            if ($autobiography) {
-                AutobiographyGenerationState::fail($autobiography, $e->getMessage());
-            }
-            Log::error('Autobiography pipeline failed', [
-                'autobiography_id' => $autobiographyId,
-                'message' => $e->getMessage(),
-                'exception' => $e::class,
-            ]);
-        })->dispatch();
+        AutobiographyPipelineDispatcher::start($autobiography, $runId);
     }
 
     public function generateSinglePass(Autobiography $autobiography): string
@@ -84,6 +62,9 @@ class AutobiographyGeneratorService
                 .', generation_meta в БД). Очистите очередь и перезапустите генерацию.',
             );
         }
+
+        AutobiographyGenerationState::setStep($autobiography, 'outline:ai');
+        AutobiographyGenerationState::logProgress($autobiography, 'Запрос плана к AI…');
 
         $outlineCtx = $this->context->assembleAutobiographyOutline(
             $autobiography->user,
@@ -120,6 +101,11 @@ class AutobiographyGeneratorService
         $batchCtx = $this->context->assembleEntityBatch($autobiography->user, $entityIds);
         $total = count($state['batches']);
         $outlineExcerpt = $this->excerpt($state['outline']);
+
+        AutobiographyGenerationState::logProgress(
+            $autobiography,
+            "Фрагмент ".($batchIndex + 1)."/{$total}: запрос к AI…",
+        );
 
         $response = $this->ai->chat(
             [['role' => 'user', 'content' => $this->batchPrompt(

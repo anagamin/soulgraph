@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Application\Services\AutobiographyGenerationState;
 use App\Application\Services\AutobiographyGeneratorService;
+use App\Application\Services\AutobiographyPipelineDispatcher;
 use App\Jobs\Concerns\ValidatesAutobiographyRun;
 use App\Models\Autobiography;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,9 +32,17 @@ class GenerateAutobiographyBatchJob implements ShouldQueue
             return;
         }
 
+        AutobiographyGenerationState::setStep($autobiography, "batch:{$this->batchIndex}:started");
+        Log::info('Autobiography batch job started', [
+            'autobiography_id' => $this->autobiographyId,
+            'run_id' => $this->runId,
+            'batch_index' => $this->batchIndex,
+        ]);
+
         try {
             $fragment = $generator->generateBatch($autobiography, $this->batchIndex);
             AutobiographyGenerationState::appendFragment($autobiography, $this->batchIndex, $fragment);
+            AutobiographyPipelineDispatcher::afterBatch($autobiography->fresh(), $this->runId, $this->batchIndex);
         } catch (\Throwable $e) {
             $this->failGeneration($autobiography, $e);
 

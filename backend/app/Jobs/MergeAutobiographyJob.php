@@ -30,6 +30,12 @@ class MergeAutobiographyJob implements ShouldQueue
             return;
         }
 
+        AutobiographyGenerationState::setStep($autobiography, 'merge:started');
+        Log::info('Autobiography merge job started', [
+            'autobiography_id' => $this->autobiographyId,
+            'run_id' => $this->runId,
+        ]);
+
         try {
             $content = $generator->mergeFragments($autobiography);
             AutobiographyGenerationState::complete($autobiography, $content);

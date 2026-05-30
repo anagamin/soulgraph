@@ -9,7 +9,12 @@ interface Autobiography {
   content: string
   status: string
   version: number
-  scope_params?: { generation_error?: string; generation_step?: string }
+  scope_params?: {
+    generation_error?: string
+    generation_step?: string
+    generation_step_at?: string
+    generation_log?: { at: string; message: string }[]
+  }
 }
 
 const items = ref<Autobiography[]>([])
@@ -51,7 +56,7 @@ async function load() {
   items.value = data.data ?? data
 }
 
-async function waitForCompletion(id: string, maxAttempts = 60) {
+async function waitForCompletion(id: string, maxAttempts = 900) {
   for (let i = 0; i < maxAttempts; i++) {
     const { data } = await api.get(`/autobiographies/${id}`)
     selected.value = data
@@ -150,9 +155,19 @@ onMounted(load)
           <span v-else>Не удалось сгенерировать автобиографию. Проверьте GPTUNNEL_API_KEY и перезапустите очередь: php artisan queue:work --timeout=360</span>
         </p>
         <p v-else-if="generating || selected.status === 'pending' || selected.status === 'processing'" class="mb-4 text-sm text-zinc-400">
-          Генерация может занять несколько минут…
+          Генерация может занять 10–20 минут (несколько запросов к AI)…
           <span v-if="selected.scope_params?.generation_step" class="block text-xs text-zinc-500">
             Шаг: {{ selected.scope_params.generation_step }}
+            <template v-if="selected.scope_params.generation_step_at">
+              · с {{ new Date(selected.scope_params.generation_step_at).toLocaleTimeString() }}
+            </template>
+          </span>
+          <span
+            v-for="(entry, i) in selected.scope_params?.generation_log?.slice(-3) ?? []"
+            :key="i"
+            class="block text-xs text-zinc-600"
+          >
+            {{ entry.message }}
           </span>
         </p>
         <div class="mb-4 flex gap-2">

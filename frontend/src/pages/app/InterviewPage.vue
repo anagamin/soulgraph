@@ -17,6 +17,7 @@ const title = ref('')
 const sessionType = ref('open_exploration')
 
 const types = [
+  { value: 'general_story', label: 'Общая история' },
   { value: 'life_period', label: 'Жизненный период' },
   { value: 'relationship', label: 'Отношения' },
   { value: 'fear', label: 'Страх' },

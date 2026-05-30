@@ -37,16 +37,16 @@ class AutobiographyGeneratorService
         $maxBatches = (int) config('ai.autobiography.max_batches', 12);
         $batches = array_slice($plan['batches'], 0, $maxBatches);
 
-        AutobiographyGenerationState::init($autobiography, [
+        $runId = AutobiographyGenerationState::init($autobiography, [
             'batches' => $batches,
             'labels' => $plan['labels'],
         ]);
 
-        $jobs = [new GenerateAutobiographyOutlineJob($autobiography->id)];
+        $jobs = [new GenerateAutobiographyOutlineJob($autobiography->id, $runId)];
         foreach (array_keys($batches) as $index) {
-            $jobs[] = new GenerateAutobiographyBatchJob($autobiography->id, $index);
+            $jobs[] = new GenerateAutobiographyBatchJob($autobiography->id, $runId, $index);
         }
-        $jobs[] = new MergeAutobiographyJob($autobiography->id);
+        $jobs[] = new MergeAutobiographyJob($autobiography->id, $runId);
 
         $autobiographyId = $autobiography->id;
 
@@ -79,7 +79,10 @@ class AutobiographyGeneratorService
     {
         $state = AutobiographyGenerationState::read($autobiography->fresh());
         if (! $state) {
-            throw new \RuntimeException('Generation state missing for outline step.');
+            throw new \RuntimeException(
+                'Нет состояния генерации (кэш: '.config('cache.default')
+                .', generation_meta в БД). Очистите очередь и перезапустите генерацию.',
+            );
         }
 
         $outlineCtx = $this->context->assembleAutobiographyOutline(
@@ -98,10 +101,18 @@ class AutobiographyGeneratorService
     public function generateBatch(Autobiography $autobiography, int $batchIndex): string
     {
         $state = AutobiographyGenerationState::read($autobiography->fresh());
-        if (! $state || ! isset($state['batches'][$batchIndex], $state['outline'])) {
+        if (! $state || ! isset($state['batches'][$batchIndex])) {
             $step = ($autobiography->scope_params ?? [])['generation_step'] ?? 'unknown';
             throw new \RuntimeException(
-                "Generation state incomplete for batch {$batchIndex} (step: {$step}).",
+                "Нет метаданных для фрагмента {$batchIndex} (шаг: {$step}). Перезапустите генерацию.",
+            );
+        }
+
+        if (empty($state['outline'])) {
+            $step = ($autobiography->scope_params ?? [])['generation_step'] ?? 'unknown';
+            throw new \RuntimeException(
+                "План ещё не готов для фрагмента {$batchIndex} (шаг: {$step}). "
+                .'Возможно, шаг «План» завершился с ошибкой — смотрите generation_error.',
             );
         }
 

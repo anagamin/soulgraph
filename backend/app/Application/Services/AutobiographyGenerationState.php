@@ -23,6 +23,7 @@ class AutobiographyGenerationState
 
         $runId = (string) Str::uuid();
         self::clearCache($autobiography->id);
+        AutobiographyQueueCleanup::purgeForAutobiography($autobiography->id);
 
         $meta = [
             'run_id' => $runId,

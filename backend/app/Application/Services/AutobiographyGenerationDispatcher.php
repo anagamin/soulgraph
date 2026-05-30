@@ -8,6 +8,8 @@ class AutobiographyGenerationDispatcher
 {
     public function dispatch(string $autobiographyId): void
     {
+        AutobiographyQueueCleanup::purgeForAutobiography($autobiographyId);
+
         if (config('queue.default') === 'sync') {
             GenerateAutobiographyJob::dispatchSync($autobiographyId);
 

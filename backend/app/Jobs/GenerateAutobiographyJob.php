@@ -15,6 +15,8 @@ class GenerateAutobiographyJob implements ShouldQueue
 
     public int $timeout = 360;
 
+    public int $tries = 1;
+
     public function __construct(public string $autobiographyId) {}
 
     public function handle(AutobiographyGeneratorService $generator): void

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Application\Services\AutobiographyGenerationState;
 use App\Application\Services\AutobiographyGeneratorService;
 use App\Application\Services\AutobiographyPipelineDispatcher;
+use App\Jobs\Concerns\AutobiographyPipelineJob;
 use App\Jobs\Concerns\ValidatesAutobiographyRun;
 use App\Models\Autobiography;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 class GenerateAutobiographyOutlineJob implements ShouldQueue
 {
+    use AutobiographyPipelineJob;
     use Queueable;
     use ValidatesAutobiographyRun;
 
@@ -59,7 +61,7 @@ class GenerateAutobiographyOutlineJob implements ShouldQueue
 
     private function failGeneration(Autobiography $autobiography, \Throwable $e): void
     {
-        AutobiographyGenerationState::fail($autobiography, 'План: '.$e->getMessage());
+        AutobiographyGenerationState::fail($autobiography, 'План: '.$this->humanizeFailure($e));
         Log::error('Autobiography outline step failed', [
             'autobiography_id' => $this->autobiographyId,
             'run_id' => $this->runId,

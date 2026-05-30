@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Application\Services\AutobiographyGenerationState;
 use App\Application\Services\AutobiographyGeneratorService;
 use App\Application\Services\AutobiographyPipelineDispatcher;
+use App\Jobs\Concerns\AutobiographyPipelineJob;
 use App\Jobs\Concerns\ValidatesAutobiographyRun;
 use App\Models\Autobiography;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 class GenerateAutobiographyBatchJob implements ShouldQueue
 {
+    use AutobiographyPipelineJob;
     use Queueable;
     use ValidatesAutobiographyRun;
 
@@ -62,7 +64,7 @@ class GenerateAutobiographyBatchJob implements ShouldQueue
     {
         AutobiographyGenerationState::fail(
             $autobiography,
-            "Фрагмент {$this->batchIndex}: ".$e->getMessage(),
+            "Фрагмент {$this->batchIndex}: ".$this->humanizeFailure($e),
         );
         Log::error('Autobiography batch step failed', [
             'autobiography_id' => $this->autobiographyId,

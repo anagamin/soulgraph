@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Application\Services\AutobiographyGenerationState;
 use App\Application\Services\AutobiographyGeneratorService;
+use App\Jobs\Concerns\AutobiographyPipelineJob;
 use App\Jobs\Concerns\ValidatesAutobiographyRun;
 use App\Models\Autobiography;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 class MergeAutobiographyJob implements ShouldQueue
 {
+    use AutobiographyPipelineJob;
     use Queueable;
     use ValidatesAutobiographyRun;
 
@@ -56,7 +58,7 @@ class MergeAutobiographyJob implements ShouldQueue
 
     private function failGeneration(Autobiography $autobiography, \Throwable $e): void
     {
-        AutobiographyGenerationState::fail($autobiography, 'Сборка: '.$e->getMessage());
+        AutobiographyGenerationState::fail($autobiography, 'Сборка: '.$this->humanizeFailure($e));
         Log::error('Autobiography merge step failed', [
             'autobiography_id' => $this->autobiographyId,
             'run_id' => $this->runId,

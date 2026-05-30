@@ -8,6 +8,9 @@ use App\Infrastructure\Logging\JobLogWriter;
 use App\Infrastructure\Projection\EntityEmbeddingProjector;
 use App\Infrastructure\Projection\Neo4jGraphProjector;
 use App\Infrastructure\Projection\QdrantEmbeddingProjector;
+use App\Domain\Interview\Enums\InterviewSessionType;
+use App\Jobs\TimelineReconciliationJob;
+use App\Models\InterviewSession;
 use App\Models\Message;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -73,6 +76,8 @@ class ProcessMessageJob implements ShouldQueue
                 ],
             ]);
 
+            $this->maybeDispatchTimelineReconciliation($message);
+
             $jobLog->log([
                 'user_id' => $message->user_id,
                 'job_class' => self::class,
@@ -91,5 +96,34 @@ class ProcessMessageJob implements ShouldQueue
             ]);
             throw $e;
         }
+    }
+
+    private function maybeDispatchTimelineReconciliation(Message $message): void
+    {
+        if ($message->role !== 'user' || ! $message->interview_session_id) {
+            return;
+        }
+
+        $session = InterviewSession::find($message->interview_session_id);
+        if (! $session || $session->session_type !== InterviewSessionType::GeneralStory->value) {
+            return;
+        }
+
+        $userMessageCount = Message::where('interview_session_id', $session->id)
+            ->where('role', 'user')
+            ->where('processing_status', 'completed')
+            ->count();
+
+        if ($userMessageCount < 2 || $userMessageCount % 3 !== 0) {
+            return;
+        }
+
+        if (config('queue.default') === 'sync') {
+            TimelineReconciliationJob::dispatchSync($message->id);
+
+            return;
+        }
+
+        TimelineReconciliationJob::dispatch($message->id)->afterCommit();
     }
 }

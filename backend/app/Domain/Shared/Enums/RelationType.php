@@ -13,6 +13,9 @@ enum RelationType: string
     case EvolvesInto = 'evolves_into';
     case Symbolizes = 'symbolizes';
     case PartOf = 'part_of';
+    case Precedes = 'precedes';
+    case Follows = 'follows';
+    case During = 'during';
     case LocatedIn = 'located_in';
     case Involves = 'involves';
     case Expresses = 'expresses';

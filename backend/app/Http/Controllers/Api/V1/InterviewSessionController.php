@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Application\Services\InterviewChatService;
 use App\Application\Services\MessageProcessingDispatcher;
+use App\Application\Services\TimelineService;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\InterviewSessionResource;
 use App\Http\Resources\MessageResource;
@@ -147,6 +148,18 @@ class InterviewSessionController extends Controller
             ->get();
 
         return response()->json(['entities' => $entities]);
+    }
+
+    public function timeline(Request $request, string $id, TimelineService $timeline): JsonResponse
+    {
+        $session = $request->user()->interviewSessions()->findOrFail($id);
+
+        return response()->json([
+            'session_type' => $session->session_type,
+            'timeline' => $timeline->loadTimelineEntities($session->user_id)->values(),
+            'conflicts' => $timeline->detectConflicts($session->user_id),
+            'context' => $timeline->chronologyContextForUser($session->user_id),
+        ]);
     }
 
     private function createUserMessage(InterviewSession $session, string $content): Message

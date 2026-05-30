@@ -6,26 +6,14 @@ use App\Models\Entity;
 use App\Models\EntityVersion;
 use App\Models\Message;
 use App\Models\Relation;
-use Carbon\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 
 class EarthCatalogService
 {
-    /** @var array<string, int> */
-    private const LIFE_PERIOD_SORT = [
-        'раннее детство' => 1,
-        'детство' => 2,
-        'школа' => 3,
-        'подростковый возраст' => 4,
-        'подростковый' => 4,
-        'юность' => 5,
-        'студенчество' => 6,
-        'молодость' => 7,
-        'зрелость' => 8,
-        'средний возраст' => 9,
-        'пожилой возраст' => 10,
-    ];
+    public function __construct(
+        private TimelineService $timeline,
+    ) {}
 
     public function catalog(int $userId): array
     {
@@ -124,7 +112,7 @@ class EarthCatalogService
     {
         $version = $entity->versions->first();
         $payload = $version?->payload ?? [];
-        $temporal = $this->resolveTemporal($payload, $version?->valid_from);
+        $temporal = $this->timeline->resolveTemporal($payload, $version?->valid_from);
 
         return [
             'id' => $entity->id,
@@ -135,56 +123,6 @@ class EarthCatalogService
             'valid_from' => $version?->valid_from?->toIso8601String(),
             'temporal' => $temporal,
             'related_count' => $relatedCount,
-        ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return array{approx_year: ?int, occurred_at: ?string, life_period: ?string, sort_key: float, has_date: bool, display: string}
-     */
-    private function resolveTemporal(array $payload, ?Carbon $validFrom): array
-    {
-        $approxYear = Arr::get($payload, 'approx_year');
-        if (is_string($approxYear) && is_numeric($approxYear)) {
-            $approxYear = (int) $approxYear;
-        }
-        $approxYear = is_int($approxYear) ? $approxYear : null;
-
-        $occurredAt = Arr::get($payload, 'occurred_at');
-        $lifePeriod = Arr::get($payload, 'life_period');
-
-        $sortKey = null;
-        $display = 'Без даты';
-
-        if ($approxYear) {
-            $sortKey = (float) $approxYear;
-            $display = (string) $approxYear;
-        } elseif ($occurredAt) {
-            try {
-                $date = Carbon::parse($occurredAt);
-                $sortKey = (float) $date->year + ($date->month / 12);
-                $display = $date->format('Y-m-d');
-            } catch (\Throwable) {
-                $occurredAt = null;
-            }
-        } elseif ($lifePeriod && is_string($lifePeriod)) {
-            $periodKey = mb_strtolower(trim($lifePeriod));
-            $sortKey = self::LIFE_PERIOD_SORT[$periodKey] ?? 900 + crc32($periodKey) % 100;
-            $display = $lifePeriod;
-        } elseif ($validFrom && $validFrom->year > 1970) {
-            $sortKey = (float) $validFrom->year;
-            $display = (string) $validFrom->year;
-        } else {
-            $sortKey = PHP_FLOAT_MAX;
-        }
-
-        return [
-            'approx_year' => $approxYear,
-            'occurred_at' => is_string($occurredAt) ? $occurredAt : null,
-            'life_period' => is_string($lifePeriod) ? $lifePeriod : null,
-            'sort_key' => $sortKey,
-            'has_date' => $sortKey < PHP_FLOAT_MAX,
-            'display' => $display,
         ];
     }
 

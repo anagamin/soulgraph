@@ -2,6 +2,7 @@
 
 namespace App\Infrastructure\Persistence\Neo4j;
 
+use App\Application\Services\TimelineService;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -30,6 +31,7 @@ class Neo4jClient
             'MERGE (e:Entity {mysql_id: $mysql_id})
              SET e.user_id = $user_id, e.type = $type, e.layer = $layer,
                  e.label = $label, e.confidence = $confidence, e.active = $active,
+                 e.approx_year = $approx_year, e.sort_key = $sort_key, e.has_date = $has_date,
                  e.updated_at = datetime()',
             $data,
         );
@@ -51,7 +53,7 @@ class Neo4jClient
             $cypher = 'MATCH (e:Entity {user_id: $user_id, active: true})
                  OPTIONAL MATCH (e)-[r:REL {active: true}]->(t:Entity)
                  WITH e, collect(DISTINCT CASE WHEN t IS NULL THEN NULL ELSE r.type + " -> " + t.label END)[0..5] AS rels
-                 ORDER BY e.layer, e.label
+                 ORDER BY coalesce(e.sort_key, 9999), e.layer, e.label
                  RETURN e.label AS label, e.type AS type, e.layer AS layer, rels';
 
             $params = ['user_id' => $userId];
@@ -229,6 +231,8 @@ class Neo4jClient
 
         foreach ($entities as $entity) {
             $version = $entity->versions->where('is_active', true)->first();
+            $payload = $version?->payload ?? [];
+            $temporal = app(TimelineService::class)->resolveTemporal($payload, $version?->valid_from);
             $this->upsertEntityNode([
                 'mysql_id' => $entity->id,
                 'user_id' => (string) $userId,
@@ -237,6 +241,9 @@ class Neo4jClient
                 'label' => $entity->canonical_label,
                 'confidence' => $version?->confidence ?? 0.5,
                 'active' => true,
+                'approx_year' => $temporal['approx_year'],
+                'sort_key' => $temporal['sort_key'],
+                'has_date' => $temporal['has_date'],
             ]);
         }
 

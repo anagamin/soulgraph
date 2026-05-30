@@ -6,6 +6,8 @@ export interface User {
   id: number
   name: string
   email: string
+  birth_year?: number | null
+  birth_place?: string | null
 }
 
 export const useAuthStore = defineStore('auth', () => {

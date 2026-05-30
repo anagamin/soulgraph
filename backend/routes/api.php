@@ -21,6 +21,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/user', [AuthController::class, 'user']);
         Route::post('/settings/reset', [SettingsController::class, 'reset']);
+        Route::patch('/settings/profile', [SettingsController::class, 'updateProfile']);
 
         Route::prefix('interview')->group(function () {
             Route::get('/sessions', [InterviewSessionController::class, 'index']);
@@ -30,10 +31,12 @@ Route::prefix('v1')->group(function () {
             Route::post('/sessions/{id}/messages/stream', [InterviewSessionController::class, 'streamMessage']);
             Route::post('/sessions/{id}/upload', [InterviewSessionController::class, 'upload']);
             Route::get('/sessions/{id}/extractions', [InterviewSessionController::class, 'extractions']);
+            Route::get('/sessions/{id}/timeline', [InterviewSessionController::class, 'timeline']);
         });
 
         Route::get('/earth/catalog', [EarthController::class, 'catalog']);
         Route::get('/earth/entities/{id}', [EarthController::class, 'show']);
+        Route::patch('/earth/entities/{id}/temporal', [EarthController::class, 'updateTemporal']);
         Route::get('/earth/timeline', [EarthController::class, 'timeline']);
 
         Route::get('/entities/merge-candidates', [EntityMergeController::class, 'candidates']);

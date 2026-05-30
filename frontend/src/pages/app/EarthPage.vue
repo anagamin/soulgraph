@@ -20,6 +20,9 @@ const selectedId = ref<string | null>(null)
 const detail = ref<EarthEntityDetail | null>(null)
 const detailLoading = ref(false)
 const search = ref('')
+const editYear = ref<number | ''>('')
+const editPeriod = ref('')
+const savingTemporal = ref(false)
 
 const tabs: { id: EarthTab; label: string; count: () => number }[] = [
   { id: 'timeline', label: 'Таймлайн', count: () => (catalog.value?.timeline.length ?? 0) },
@@ -76,8 +79,25 @@ async function selectEntity(id: string) {
   try {
     const { data } = await api.get<EarthEntityDetail>(`/earth/entities/${id}`)
     detail.value = data
+    editYear.value = data.entity.temporal.approx_year ?? ''
+    editPeriod.value = data.entity.temporal.life_period ?? ''
   } finally {
     detailLoading.value = false
+  }
+}
+
+async function saveTemporal() {
+  if (!selectedId.value) return
+  savingTemporal.value = true
+  try {
+    const { data } = await api.patch<EarthEntityDetail>(`/earth/entities/${selectedId.value}/temporal`, {
+      approx_year: editYear.value === '' ? null : editYear.value,
+      life_period: editPeriod.value || null,
+    })
+    detail.value = data
+    await loadCatalog()
+  } finally {
+    savingTemporal.value = false
   }
 }
 
@@ -224,7 +244,38 @@ onMounted(loadCatalog)
           <span v-if="detail.entity.temporal.life_period" class="text-zinc-500">
             · {{ detail.entity.temporal.life_period }}
           </span>
+          <span v-if="detail.entity.temporal.date_suspicious" class="text-amber-500"> · дата не подтверждена</span>
         </p>
+
+        <section
+          v-if="detail.entity.type === 'event' || detail.entity.type === 'epoch'"
+          class="detail-section"
+        >
+          <h4>Хронология</h4>
+          <div class="space-y-2">
+            <input
+              v-model.number="editYear"
+              type="number"
+              min="1900"
+              max="2100"
+              placeholder="Год"
+              class="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-sm"
+            />
+            <input
+              v-model="editPeriod"
+              type="text"
+              placeholder="Период (детство, 1990-е…)"
+              class="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-sm"
+            />
+            <button
+              class="rounded-lg bg-violet-600 px-3 py-1.5 text-xs hover:bg-violet-500 disabled:opacity-50"
+              :disabled="savingTemporal"
+              @click="saveTemporal"
+            >
+              {{ savingTemporal ? 'Сохранение…' : 'Сохранить дату' }}
+            </button>
+          </div>
+        </section>
 
         <section v-if="detail.summary" class="detail-section">
           <h4>Сводка</h4>

@@ -12,25 +12,50 @@ interface Message {
   processing_status?: string
 }
 
+interface TimelineItem {
+  id: string
+  type: string
+  label: string
+  temporal: {
+    display: string
+    date_suspicious?: boolean
+    has_date?: boolean
+  }
+}
+
 const route = useRoute()
 const sessionId = computed(() => route.params.id as string)
+const sessionType = ref('')
 const messages = ref<Message[]>([])
 const input = ref('')
 const streaming = ref(false)
 const streamContent = ref('')
 const entities = ref<unknown[]>([])
+const timeline = ref<TimelineItem[]>([])
+const conflicts = ref<string[]>([])
 const processingExtractions = ref(false)
 const chatRef = ref<HTMLElement | null>(null)
+
+const isGeneralStory = computed(() => sessionType.value === 'general_story')
 
 async function loadExtractions() {
   const ext = await api.get(`/interview/sessions/${sessionId.value}/extractions`)
   entities.value = ext.data.entities ?? []
 }
 
+async function loadTimeline() {
+  if (!isGeneralStory.value) return
+  const { data } = await api.get(`/interview/sessions/${sessionId.value}/timeline`)
+  timeline.value = data.timeline ?? []
+  conflicts.value = data.conflicts ?? []
+}
+
 async function load() {
   const { data } = await api.get(`/interview/sessions/${sessionId.value}`)
+  sessionType.value = data.data?.session_type ?? data.session_type ?? ''
   messages.value = data.data?.messages ?? data.messages ?? []
   await loadExtractions()
+  await loadTimeline()
 }
 
 function hasPendingUserMessages() {
@@ -48,6 +73,7 @@ async function waitForExtractions(maxAttempts = 30) {
       await new Promise((r) => setTimeout(r, 1500))
     }
     await loadExtractions()
+    await loadTimeline()
   } finally {
     processingExtractions.value = false
   }
@@ -116,8 +142,8 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="grid h-[calc(100vh-8rem)] gap-4 lg:grid-cols-4">
-    <div ref="chatRef" class="glass flex flex-col overflow-y-auto rounded-2xl p-4 lg:col-span-3">
+  <div class="grid h-[calc(100vh-8rem)] gap-4" :class="isGeneralStory ? 'lg:grid-cols-5' : 'lg:grid-cols-4'">
+    <div ref="chatRef" class="glass flex flex-col overflow-y-auto rounded-2xl p-4" :class="isGeneralStory ? 'lg:col-span-3' : 'lg:col-span-3'">
       <div v-for="m in messages" :key="m.id" class="mb-4" :class="m.role === 'user' ? 'text-right' : ''">
         <div
           class="inline-block max-w-[85%] rounded-2xl px-4 py-3 text-sm"
@@ -134,7 +160,26 @@ onMounted(load)
       </form>
     </div>
 
-    <aside class="glass rounded-2xl p-4">
+    <aside v-if="isGeneralStory" class="glass overflow-y-auto rounded-2xl p-4">
+      <h3 class="text-sm font-medium text-zinc-400">Таймлайн</h3>
+      <p v-if="processingExtractions" class="mt-2 text-xs text-violet-400">Обновляем…</p>
+      <ul v-if="conflicts.length" class="mt-3 space-y-1 text-xs text-amber-400">
+        <li v-for="(c, i) in conflicts" :key="i">⚠ {{ c }}</li>
+      </ul>
+      <ul class="mt-4 space-y-2 text-xs">
+        <li v-for="item in timeline" :key="item.id" class="rounded border border-white/5 p-2">
+          <span class="text-zinc-500">{{ item.type === 'epoch' ? 'Эпоха' : 'Событие' }}</span>
+          <div class="font-medium">{{ item.label }}</div>
+          <div class="text-zinc-500" :class="{ 'text-amber-500': item.temporal.date_suspicious }">
+            {{ item.temporal.display }}
+            <span v-if="item.temporal.date_suspicious"> ⚠</span>
+          </div>
+        </li>
+        <li v-if="!timeline.length && !processingExtractions" class="text-zinc-600">Появится по мере интервью</li>
+      </ul>
+    </aside>
+
+    <aside class="glass overflow-y-auto rounded-2xl p-4">
       <h3 class="text-sm font-medium text-zinc-400">Извлечённые сущности</h3>
       <p v-if="processingExtractions" class="mt-2 text-xs text-violet-400">Извлекаем из последнего сообщения…</p>
       <ul class="mt-4 space-y-2 text-xs">

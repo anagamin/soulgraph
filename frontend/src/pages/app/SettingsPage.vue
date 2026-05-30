@@ -1,14 +1,38 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import api from '@/shared/api/client'
 import { useAuthStore } from '@/stores/auth'
+import api from '@/shared/api/client'
 
 const auth = useAuthStore()
 const router = useRouter()
-
 const resetting = ref(false)
+const saving = ref(false)
 const error = ref<string | null>(null)
+const birthYear = ref<number | ''>('')
+const birthPlace = ref('')
+
+async function loadProfile() {
+  await auth.fetchUser()
+  birthYear.value = auth.user?.birth_year ?? ''
+  birthPlace.value = auth.user?.birth_place ?? ''
+}
+
+async function saveProfile() {
+  saving.value = true
+  error.value = null
+  try {
+    const { data } = await api.patch('/settings/profile', {
+      birth_year: birthYear.value === '' ? null : birthYear.value,
+      birth_place: birthPlace.value || null,
+    })
+    auth.user = data.user
+  } catch {
+    error.value = 'Не удалось сохранить профиль.'
+  } finally {
+    saving.value = false
+  }
+}
 
 async function startOver() {
   const confirmed = window.confirm(
@@ -26,6 +50,7 @@ async function startOver() {
 
   try {
     await api.post('/settings/reset', { confirm: true })
+    await loadProfile()
     await router.push('/app/interview')
   } catch {
     error.value = 'Не удалось сбросить данные. Попробуйте ещё раз.'
@@ -33,6 +58,8 @@ async function startOver() {
     resetting.value = false
   }
 }
+
+onMounted(loadProfile)
 </script>
 
 <template>
@@ -48,6 +75,42 @@ async function startOver() {
         <dd>{{ auth.user?.email }}</dd>
       </div>
     </dl>
+
+    <div class="mt-8 border-t border-white/10 pt-8">
+      <h3 class="text-sm font-medium text-zinc-300">Якоря жизни</h3>
+      <p class="mt-2 text-xs text-zinc-500">
+        Год рождения и место помогают точнее выстраивать хронологию в интервью «Общая история».
+      </p>
+      <div class="mt-4 space-y-3">
+        <div>
+          <label class="text-xs text-zinc-500">Год рождения</label>
+          <input
+            v-model.number="birthYear"
+            type="number"
+            min="1900"
+            max="2100"
+            placeholder="1985"
+            class="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-4 py-2"
+          />
+        </div>
+        <div>
+          <label class="text-xs text-zinc-500">Место рождения / где выросли</label>
+          <input
+            v-model="birthPlace"
+            type="text"
+            placeholder="Москва"
+            class="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-4 py-2"
+          />
+        </div>
+        <button
+          class="rounded-lg bg-violet-600 px-4 py-2 text-sm hover:bg-violet-500 disabled:opacity-50"
+          :disabled="saving"
+          @click="saveProfile"
+        >
+          {{ saving ? 'Сохранение…' : 'Сохранить якоря' }}
+        </button>
+      </div>
+    </div>
 
     <div class="mt-10 border-t border-white/10 pt-8">
       <h3 class="text-sm font-medium text-zinc-300">Данные профиля</h3>

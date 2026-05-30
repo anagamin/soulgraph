@@ -3,6 +3,7 @@
 namespace App\Application\Services;
 
 use App\Domain\Shared\EntityLabelNormalizer;
+use App\Domain\Shared\TemporalSource;
 use App\Models\Entity;
 use App\Models\EntityAlias;
 use App\Models\Message;
@@ -15,6 +16,7 @@ class EntityResolutionService
     public function __construct(
         private EntityMergeService $merger,
         private EntitySemanticMatcher $semanticMatcher,
+        private TimelineService $timeline,
     ) {}
 
     /**
@@ -208,9 +210,15 @@ class EntityResolutionService
      */
     private function mergePayload(array $existing, array $incoming): array
     {
-        $merged = $existing;
+        $temporalKeys = ['approx_year', 'occurred_at', 'life_period', 'temporal_source'];
+        $temporalIncoming = Arr::only($incoming, $temporalKeys);
+        $merged = $this->timeline->mergeTemporalAttributes($existing, $temporalIncoming);
 
         foreach ($incoming as $key => $value) {
+            if (in_array($key, $temporalKeys, true)) {
+                continue;
+            }
+
             if ($value === null || $value === '') {
                 continue;
             }
@@ -222,21 +230,25 @@ class EntityResolutionService
                     $merged[$key] = trim($merged[$key].' '.$value);
                 }
             } elseif ($key === 'life_significance' && is_numeric($value)) {
-                $incoming = max(0.0, min(1.0, (float) $value));
-                $existing = is_numeric($merged[$key] ?? null) ? (float) $merged[$key] : 0.0;
-                $merged[$key] = max($existing, $incoming);
+                $incomingScore = max(0.0, min(1.0, (float) $value));
+                $existingScore = is_numeric($merged[$key] ?? null) ? (float) $merged[$key] : 0.0;
+                $merged[$key] = max($existingScore, $incomingScore);
             } elseif ($key === 'life_significance_source' && is_string($value)) {
-                $incoming = $value;
-                $existing = $merged[$key] ?? null;
-                if ($existing === EntitySignificanceService::SOURCE_USER_STATED && $incoming !== EntitySignificanceService::SOURCE_USER_STATED) {
+                $incomingSource = $value;
+                $existingSource = $merged[$key] ?? null;
+                if ($existingSource === EntitySignificanceService::SOURCE_USER_STATED && $incomingSource !== EntitySignificanceService::SOURCE_USER_STATED) {
                     continue;
                 }
-                if ($incoming === EntitySignificanceService::SOURCE_USER_STATED) {
+                if ($incomingSource === EntitySignificanceService::SOURCE_USER_STATED) {
                     $merged[$key] = EntitySignificanceService::SOURCE_USER_STATED;
-                } elseif ($existing === null || $existing === '') {
-                    $merged[$key] = $incoming;
+                } elseif ($existingSource === null || $existingSource === '') {
+                    $merged[$key] = $incomingSource;
                 }
             }
+        }
+
+        if (Arr::has($merged, 'approx_year') && ! Arr::has($merged, 'temporal_source')) {
+            $merged['temporal_source'] = TemporalSource::AI_INFERRED;
         }
 
         return $merged;

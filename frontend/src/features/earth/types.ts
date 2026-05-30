@@ -7,6 +7,8 @@ export interface EarthTemporal {
   sort_key: number
   has_date: boolean
   display: string
+  temporal_source?: string | null
+  date_suspicious?: boolean
 }
 
 export interface EarthEntity {
@@ -77,6 +79,9 @@ export const RELATION_TYPE_LABELS: Record<string, string> = {
   located_in: 'находится в',
   involves: 'связан с',
   part_of: 'часть',
+  precedes: 'раньше',
+  follows: 'позже',
+  during: 'внутри периода',
   associated_with: 'ассоциируется с',
   causes: 'вызывает',
   triggers: 'триггерит',

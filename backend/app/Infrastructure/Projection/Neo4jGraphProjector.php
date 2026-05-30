@@ -2,6 +2,7 @@
 
 namespace App\Infrastructure\Projection;
 
+use App\Application\Services\TimelineService;
 use App\Infrastructure\Logging\ProjectionLogWriter;
 use App\Infrastructure\Persistence\Neo4j\Neo4jClient;
 use App\Models\Entity;
@@ -12,6 +13,7 @@ class Neo4jGraphProjector
     public function __construct(
         private Neo4jClient $neo4j,
         private ProjectionLogWriter $logger,
+        private TimelineService $timeline,
     ) {}
 
     public function projectEntity(Entity $entity): void
@@ -22,6 +24,8 @@ class Neo4jGraphProjector
 
         try {
             $version = $entity->versions()->where('is_active', true)->latest('valid_from')->first();
+            $payload = $version?->payload ?? [];
+            $temporal = $this->timeline->resolveTemporal($payload, $version?->valid_from);
             $this->neo4j->upsertEntityNode([
                 'mysql_id' => $entity->id,
                 'user_id' => (string) $entity->user_id,
@@ -30,6 +34,9 @@ class Neo4jGraphProjector
                 'label' => $entity->canonical_label,
                 'confidence' => $version?->confidence ?? 0.5,
                 'active' => true,
+                'approx_year' => $temporal['approx_year'],
+                'sort_key' => $temporal['sort_key'],
+                'has_date' => $temporal['has_date'],
             ]);
             $this->logger->log([
                 'user_id' => $entity->user_id,

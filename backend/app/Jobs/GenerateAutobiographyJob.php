@@ -28,9 +28,16 @@ class GenerateAutobiographyJob implements ShouldQueue
         try {
             $autobiography->update(['status' => 'processing']);
 
-            $ctx = $context->assembleForUser($user, $autobiography->title);
-            $prompt = "Напиши автобиографию в стиле «{$autobiography->style}» на русском.\n"
-                ."Область: {$autobiography->scope}\n\nКонтекст:\n{$ctx}";
+            $ctx = $context->assembleForAutobiography($user, $autobiography->scope);
+            $prompt = "Напиши связную автобиографию в стиле «{$autobiography->style}» на русском.\n"
+                ."Название: {$autobiography->title}\n"
+                ."Область: {$autobiography->scope}\n\n"
+                ."Требования:\n"
+                ."- Освети ВСЕ темы из контекста, особенно из «Контрольный список тем»; не останавливайся на одной теме.\n"
+                ."- Выстраивай повествование хронологически, где это возможно.\n"
+                ."- Не выдумывай факты, которых нет в контексте.\n"
+                ."- Значимые события (смерть близких, поворотные моменты) должны получить отдельное внимание.\n\n"
+                ."Контекст:\n{$ctx}";
 
             $response = $ai->chat(
                 [['role' => 'user', 'content' => $prompt]],

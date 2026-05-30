@@ -45,17 +45,22 @@ class Neo4jClient
         );
     }
 
-    public function getContextSnippet(string $userId, int $limit = 20): string
+    public function getContextSnippet(string $userId, ?int $limit = 20): string
     {
         try {
-            $result = $this->run(
-                'MATCH (e:Entity {user_id: $user_id, active: true})
+            $cypher = 'MATCH (e:Entity {user_id: $user_id, active: true})
                  OPTIONAL MATCH (e)-[r:REL {active: true}]->(t:Entity)
                  RETURN e.label AS label, e.type AS type, e.layer AS layer,
                         collect(DISTINCT r.type + " -> " + t.label)[0..5] AS rels
-                 LIMIT $limit',
-                ['user_id' => $userId, 'limit' => $limit],
-            );
+                 ORDER BY e.layer, e.label';
+
+            $params = ['user_id' => $userId];
+            if ($limit !== null) {
+                $cypher .= ' LIMIT $limit';
+                $params['limit'] = $limit;
+            }
+
+            $result = $this->run($cypher, $params);
 
             $lines = [];
             foreach ($result['results'][0]['data'] ?? [] as $row) {

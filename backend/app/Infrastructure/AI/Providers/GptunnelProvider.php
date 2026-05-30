@@ -28,7 +28,14 @@ class GptunnelProvider implements AiProviderInterface
     public function chat(array $messages, ChatOptions $options): ChatResponse
     {
         $payload = $this->buildChatPayload($messages, $options);
-        $response = $this->client->post('/chat/completions', $payload)->throw();
+        $timeout = $options->timeoutSeconds ?? config('ai.gptunnel.timeout', 120);
+        $response = $this->httpClient($timeout)->post('/chat/completions', $payload);
+
+        if ($response->failed()) {
+            throw new RuntimeException(
+                'GPTunnel chat failed ('.$response->status().'): '.mb_substr($response->body(), 0, 500),
+            );
+        }
         $data = $response->json();
 
         return new ChatResponse(
@@ -116,6 +123,14 @@ class GptunnelProvider implements AiProviderInterface
         }
 
         return $decoded;
+    }
+
+    private function httpClient(int $timeout): PendingRequest
+    {
+        return Http::baseUrl(rtrim(config('ai.gptunnel.base_url'), '/'))
+            ->withToken(config('ai.gptunnel.api_key') ?? '')
+            ->timeout($timeout)
+            ->retry(config('ai.gptunnel.max_retries', 3), 500);
     }
 
     private function buildChatPayload(array $messages, ChatOptions $options): array

@@ -9,7 +9,7 @@ return [
         'chat_model' => env('GPTUNNEL_CHAT_MODEL', 'gpt-4o-mini'),
         'embed_model' => env('GPTUNNEL_EMBED_MODEL', 'text-embedding-3-small'),
         'max_retries' => (int) env('GPTUNNEL_MAX_RETRIES', 3),
-        'timeout' => (int) env('GPTUNNEL_TIMEOUT', 120),
+        'timeout' => (int) env('GPTUNNEL_TIMEOUT', 180),
     ],
 
     'deduplication' => [
@@ -47,5 +47,8 @@ return [
         'batch_size' => (int) env('AUTOBIOGRAPHY_BATCH_SIZE', 8),
         'neighbors_per_seed' => (int) env('AUTOBIOGRAPHY_NEIGHBORS_PER_SEED', 4),
         'max_batches' => (int) env('AUTOBIOGRAPHY_MAX_BATCHES', 12),
+        'merge_fragment_max_chars' => (int) env('AUTOBIOGRAPHY_MERGE_FRAGMENT_MAX_CHARS', 3500),
+        'outline_excerpt_chars' => (int) env('AUTOBIOGRAPHY_OUTLINE_EXCERPT_CHARS', 2000),
+        'merge_timeout_seconds' => (int) env('AUTOBIOGRAPHY_MERGE_TIMEOUT', 300),
     ],
 ];

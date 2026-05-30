@@ -58,6 +58,7 @@ class AutobiographyGeneratorService
             Log::error('Autobiography pipeline failed', [
                 'autobiography_id' => $autobiographyId,
                 'message' => $e->getMessage(),
+                'exception' => $e::class,
             ]);
         })->dispatch();
     }
@@ -98,17 +99,21 @@ class AutobiographyGeneratorService
     {
         $state = AutobiographyGenerationState::read($autobiography->fresh());
         if (! $state || ! isset($state['batches'][$batchIndex], $state['outline'])) {
-            throw new \RuntimeException("Generation state incomplete for batch {$batchIndex}.");
+            $step = ($autobiography->scope_params ?? [])['generation_step'] ?? 'unknown';
+            throw new \RuntimeException(
+                "Generation state incomplete for batch {$batchIndex} (step: {$step}).",
+            );
         }
 
         $entityIds = $state['batches'][$batchIndex];
         $batchCtx = $this->context->assembleEntityBatch($autobiography->user, $entityIds);
         $total = count($state['batches']);
+        $outlineExcerpt = $this->excerpt($state['outline']);
 
         $response = $this->ai->chat(
             [['role' => 'user', 'content' => $this->batchPrompt(
                 $autobiography,
-                $state['outline'],
+                $outlineExcerpt,
                 $batchIndex + 1,
                 $total,
             )."\n\n{$batchCtx}"]],
@@ -120,21 +125,104 @@ class AutobiographyGeneratorService
 
     public function mergeFragments(Autobiography $autobiography): string
     {
-        $state = AutobiographyGenerationState::read($autobiography->fresh());
-        if (! $state || empty($state['outline']) || empty($state['fragments'])) {
-            throw new \RuntimeException('Generation state incomplete for merge step.');
+        $fresh = $autobiography->fresh();
+        $state = AutobiographyGenerationState::read($fresh);
+        $step = ($fresh->scope_params ?? [])['generation_step'] ?? 'unknown';
+
+        if (! $state || empty($state['outline'])) {
+            throw new \RuntimeException("Generation state incomplete for merge (step: {$step}, outline missing).");
         }
 
+        $batchCount = (int) ($state['batch_count'] ?? count($state['batches'] ?? []));
+        $fragments = $state['fragments'] ?? [];
+
+        if ($batchCount === 0 || $fragments === []) {
+            throw new \RuntimeException("Generation state incomplete for merge (step: {$step}, fragments: ".count($fragments)."/{$batchCount}).");
+        }
+
+        if (count($fragments) < $batchCount) {
+            throw new \RuntimeException(
+                "Not all fragments saved ({$step}): ".count($fragments)." of {$batchCount}. "
+                .'Проверьте CACHE_DRIVER (redis/file) и перезапустите генерацию.',
+            );
+        }
+
+        try {
+            return $this->mergeWithAi($autobiography, $state['outline'], $fragments);
+        } catch (\Throwable $e) {
+            Log::warning('Autobiography AI merge failed, using stitch fallback', [
+                'autobiography_id' => $autobiography->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return $this->stitchFragments($autobiography, $fragments);
+        }
+    }
+
+    /**
+     * @param  list<string>  $fragments
+     */
+    private function mergeWithAi(Autobiography $autobiography, string $outline, array $fragments): string
+    {
         $response = $this->ai->chat(
             [['role' => 'user', 'content' => $this->mergePrompt(
                 $autobiography,
-                $state['outline'],
-                $state['fragments'],
+                $this->excerpt($outline, 3000),
+                $this->truncateFragments($fragments),
             )]],
-            $this->chatOptions(temperature: 0.7, maxTokens: 6000),
+            $this->chatOptions(
+                temperature: 0.7,
+                maxTokens: 6000,
+                timeoutSeconds: (int) config('ai.autobiography.merge_timeout_seconds', 300),
+            ),
         );
 
         return $response->content;
+    }
+
+    /**
+     * @param  list<string>  $fragments
+     */
+    private function stitchFragments(Autobiography $autobiography, array $fragments): string
+    {
+        $parts = ["# {$autobiography->title}", ''];
+        foreach ($fragments as $index => $fragment) {
+            if ($index > 0) {
+                $parts[] = '';
+                $parts[] = '---';
+                $parts[] = '';
+            }
+            $parts[] = trim($fragment);
+        }
+
+        return implode("\n", $parts);
+    }
+
+    /**
+     * @param  list<string>  $fragments
+     * @return list<string>
+     */
+    private function truncateFragments(array $fragments): array
+    {
+        $max = (int) config('ai.autobiography.merge_fragment_max_chars', 3500);
+
+        return array_map(function (string $fragment) use ($max) {
+            if (mb_strlen($fragment) <= $max) {
+                return $fragment;
+            }
+
+            return mb_substr($fragment, 0, $max - 1).'…';
+        }, $fragments);
+    }
+
+    private function excerpt(string $text, ?int $max = null): string
+    {
+        $max ??= (int) config('ai.autobiography.outline_excerpt_chars', 2000);
+        if (mb_strlen($text) <= $max) {
+            return $text;
+        }
+
+        return mb_substr($text, 0, $max - 1).'…';
     }
 
     private function basePrompt(Autobiography $autobiography): string
@@ -164,10 +252,10 @@ class AutobiographyGeneratorService
             ."Не пиши саму автобиографию, только план.";
     }
 
-    private function batchPrompt(Autobiography $autobiography, string $outline, int $part, int $total): string
+    private function batchPrompt(Autobiography $autobiography, string $outlineExcerpt, int $part, int $total): string
     {
         return "Напиши фрагмент {$part}/{$total} автобиографии (стиль «{$autobiography->style}») на русском.\n"
-            ."Опирайся на план:\n{$outline}\n\n"
+            ."Опирайся на план (возможно сокращён):\n{$outlineExcerpt}\n\n"
             ."Используй только факты из контекста ниже.\n"
             ."Раскрой все темы этого фрагмента подробно.\n"
             ."Фрагмент должен быть самодостаточным, но без повторного введения всей жизни целиком.";
@@ -191,11 +279,15 @@ class AutobiographyGeneratorService
             ."Фрагменты:\n{$joined}";
     }
 
-    private function chatOptions(float $temperature = 0.8, int $maxTokens = 4096): ChatOptions
-    {
+    private function chatOptions(
+        float $temperature = 0.8,
+        int $maxTokens = 4096,
+        ?int $timeoutSeconds = null,
+    ): ChatOptions {
         return new ChatOptions(
             temperature: $temperature,
             maxTokens: $maxTokens,
+            timeoutSeconds: $timeoutSeconds,
         );
     }
 }

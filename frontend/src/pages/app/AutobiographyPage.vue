@@ -9,7 +9,7 @@ interface Autobiography {
   content: string
   status: string
   version: number
-  scope_params?: { generation_error?: string }
+  scope_params?: { generation_error?: string; generation_step?: string }
 }
 
 const items = ref<Autobiography[]>([])
@@ -151,6 +151,9 @@ onMounted(load)
         </p>
         <p v-else-if="generating || selected.status === 'pending' || selected.status === 'processing'" class="mb-4 text-sm text-zinc-400">
           Генерация может занять несколько минут…
+          <span v-if="selected.scope_params?.generation_step" class="block text-xs text-zinc-500">
+            Шаг: {{ selected.scope_params.generation_step }}
+          </span>
         </p>
         <div class="mb-4 flex gap-2">
           <button class="rounded-lg border border-white/10 px-3 py-1 text-sm hover:bg-white/5" @click="saveVersion">Сохранить версию</button>

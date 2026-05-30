@@ -9,5 +9,6 @@ readonly class ChatOptions
         public float $temperature = 0.7,
         public ?int $maxTokens = null,
         public ?string $responseFormat = null,
+        public ?int $timeoutSeconds = null,
     ) {}
 }

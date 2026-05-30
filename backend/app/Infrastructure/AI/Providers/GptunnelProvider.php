@@ -37,9 +37,15 @@ class GptunnelProvider implements AiProviderInterface
             );
         }
         $data = $response->json();
+        $content = $this->extractMessageContent($data);
+
+        if ($content === '') {
+            $choice = $data['choices'][0] ?? [];
+            throw new RuntimeException($this->describeEmptyResponse($data, $choice));
+        }
 
         return new ChatResponse(
-            content: $data['choices'][0]['message']['content'] ?? '',
+            content: $content,
             tokensIn: $data['usage']['prompt_tokens'] ?? null,
             tokensOut: $data['usage']['completion_tokens'] ?? null,
             model: $data['model'] ?? $payload['model'],
@@ -131,6 +137,82 @@ class GptunnelProvider implements AiProviderInterface
             ->withToken(config('ai.gptunnel.api_key') ?? '')
             ->timeout($timeout)
             ->retry(config('ai.gptunnel.max_retries', 3), 500);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function extractMessageContent(array $data): string
+    {
+        $choice = $data['choices'][0] ?? [];
+        $message = is_array($choice['message'] ?? null) ? $choice['message'] : [];
+
+        $candidates = [
+            $message['content'] ?? null,
+            $message['text'] ?? null,
+            $choice['text'] ?? null,
+            $data['output_text'] ?? null,
+            $data['content'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            $text = $this->normalizeContentValue($candidate);
+            if ($text !== '') {
+                return $text;
+            }
+        }
+
+        if ($refusal = $message['refusal'] ?? $data['refusal'] ?? null) {
+            if (is_string($refusal) && trim($refusal) !== '') {
+                throw new RuntimeException('Модель отказала: '.trim($refusal));
+            }
+        }
+
+        return '';
+    }
+
+    private function normalizeContentValue(mixed $value): string
+    {
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        if (! is_array($value)) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($value as $part) {
+            if (! is_array($part)) {
+                continue;
+            }
+            if (($part['type'] ?? '') === 'text' && isset($part['text'])) {
+                $parts[] = (string) $part['text'];
+            }
+        }
+
+        return trim(implode("\n", $parts));
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $choice
+     */
+    private function describeEmptyResponse(array $data, array $choice): string
+    {
+        $finish = (string) ($choice['finish_reason'] ?? 'unknown');
+        $completion = $data['usage']['completion_tokens'] ?? '?';
+        $model = (string) ($data['model'] ?? config('ai.gptunnel.chat_model'));
+
+        if ($finish === 'content_filter') {
+            return 'Модель '.$model.' отклонила ответ (content_filter).';
+        }
+
+        if ($finish === 'length' && (int) $completion === 0) {
+            return 'Модель '.$model.' не вернула текст: лимит контекста или max_tokens (finish_reason=length).';
+        }
+
+        return 'Модель '.$model.' вернула пустой ответ (finish_reason='.$finish.', completion_tokens='.$completion.').';
     }
 
     private function buildChatPayload(array $messages, ChatOptions $options): array

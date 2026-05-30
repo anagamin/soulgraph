@@ -71,12 +71,49 @@ class AutobiographyGeneratorService
             $this->planner->plan($autobiography->user, $autobiography->scope)['ranked'],
         );
 
-        $response = $this->ai->chat(
-            [['role' => 'user', 'content' => $this->outlinePrompt($autobiography, $state['labels'])."\n\n{$outlineCtx}"]],
-            $this->chatOptions(temperature: 0.5, maxTokens: 2048),
+        $messages = [
+            [
+                'role' => 'system',
+                'content' => 'Ты составляешь оглавление автобиографии. Ответ обязательно непустой: только план глав на русском, без пустого сообщения.',
+            ],
+            [
+                'role' => 'user',
+                'content' => $this->outlinePrompt($autobiography, $state['labels'])."\n\n{$outlineCtx}",
+            ],
+        ];
+
+        $lastError = null;
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            try {
+                $response = $this->ai->chat(
+                    $messages,
+                    $this->chatOptions(temperature: $attempt === 1 ? 0.5 : 0.7, maxTokens: 4096),
+                );
+                $content = trim($response->content);
+                if ($content !== '') {
+                    return $content;
+                }
+                $lastError = 'Пустой content в ответе API';
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::warning('Autobiography outline attempt failed', [
+                    'autobiography_id' => $autobiography->id,
+                    'attempt' => $attempt,
+                    'message' => $lastError,
+                ]);
+            }
+        }
+
+        Log::warning('Autobiography outline: using label fallback', [
+            'autobiography_id' => $autobiography->id,
+            'last_error' => $lastError,
+        ]);
+        AutobiographyGenerationState::logProgress(
+            $autobiography,
+            'План из AI пуст — собран резервный план по списку тем.',
         );
 
-        return $response->content;
+        return $this->fallbackOutline($state['labels']);
     }
 
     public function generateBatch(Autobiography $autobiography, int $batchIndex): string
@@ -232,6 +269,22 @@ class AutobiographyGeneratorService
             ."- Сначала важные поворотные события, затем связанные детали.\n"
             ."- Выстраивай повествование хронологически, где это возможно.\n"
             ."- Не выдумывай факты, которых нет в контексте.";
+    }
+
+    /**
+     * @param  list<string>  $labels
+     */
+    /**
+     * @param  list<string>  $labels
+     */
+    private function fallbackOutline(array $labels): string
+    {
+        $lines = ['# План автобиографии', ''];
+        foreach ($labels as $index => $label) {
+            $lines[] = ($index + 1).'. '.$label.' — раскрыть по фактам из контекста.';
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

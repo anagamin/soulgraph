@@ -109,8 +109,9 @@ class AutobiographyGenerationState
 
     public static function saveOutline(Autobiography $autobiography, string $outline): void
     {
-        if (trim($outline) === '') {
-            throw new \RuntimeException('AI вернул пустой план автобиографии.');
+        $outline = trim($outline);
+        if ($outline === '') {
+            throw new \RuntimeException('План автобиографии пуст после сохранения.');
         }
 
         Cache::put(self::outlineKey($autobiography->id), $outline, self::TTL_SECONDS);

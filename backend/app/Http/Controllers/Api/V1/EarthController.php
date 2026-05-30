@@ -2,34 +2,44 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Application\Services\EarthCatalogService;
 use App\Http\Controllers\Controller;
-use App\Models\Entity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class EarthController extends Controller
 {
+    public function __construct(
+        private EarthCatalogService $catalog,
+    ) {}
+
+    public function catalog(Request $request): JsonResponse
+    {
+        return response()->json($this->catalog->catalog($request->user()->id));
+    }
+
+    public function show(Request $request, string $id): JsonResponse
+    {
+        $detail = $this->catalog->entityDetail($request->user()->id, $id);
+
+        if (! $detail) {
+            return response()->json(['message' => 'Entity not found'], 404);
+        }
+
+        return response()->json($detail);
+    }
+
+    /** @deprecated Use catalog() */
     public function timeline(Request $request): JsonResponse
     {
-        $entities = Entity::where('user_id', $request->user()->id)
-            ->where('layer', 'earth')
-            ->with(['versions' => fn ($q) => $q->where('is_active', true)])
-            ->get()
-            ->map(fn (Entity $e) => [
-                'id' => $e->id,
-                'type' => $e->type,
-                'label' => $e->canonical_label,
-                'payload' => $e->versions->first()?->payload ?? [],
-                'valid_from' => $e->versions->first()?->valid_from,
-                'confidence' => $e->versions->first()?->confidence,
-            ]);
+        $data = $this->catalog->catalog($request->user()->id);
 
         return response()->json([
-            'epochs' => $entities->where('type', 'epoch')->values(),
-            'events' => $entities->where('type', 'event')->values(),
-            'people' => $entities->where('type', 'person')->values(),
-            'places' => $entities->where('type', 'place')->values(),
-            'relationships' => $entities->where('type', 'relationship')->values(),
+            'epochs' => $data['epochs'],
+            'events' => $data['events'],
+            'people' => $data['people'],
+            'places' => $data['places'],
+            'relationships' => $data['relationships'],
         ]);
     }
 }

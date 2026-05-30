@@ -8,6 +8,7 @@ use App\Models\EntityVersion;
 use App\Models\Message;
 use App\Models\Relation;
 use App\Models\RelationVersion;
+use Carbon\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
@@ -52,11 +53,16 @@ class ExtractionNormalizationService
                 'canonical_label' => $label,
             ]);
 
+            $attributes = Arr::get($item, 'attributes', ['label' => $label]);
+            if (! is_array($attributes)) {
+                $attributes = ['label' => $label];
+            }
+
             EntityVersion::create([
                 'entity_id' => $entity->id,
                 'source_message_id' => $message->id,
-                'valid_from' => now(),
-                'payload' => Arr::get($item, 'attributes', ['label' => $label]),
+                'valid_from' => $this->resolveValidFrom($attributes) ?? now(),
+                'payload' => $attributes,
                 'confidence' => $this->confidence($item),
                 'is_active' => true,
             ]);
@@ -173,5 +179,30 @@ class ExtractionNormalizationService
     private function confidence(array $item): float
     {
         return (float) Arr::get($item, 'confidence', 0.5);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function resolveValidFrom(array $attributes): ?Carbon
+    {
+        $approxYear = Arr::get($attributes, 'approx_year');
+        if (is_string($approxYear) && is_numeric($approxYear)) {
+            $approxYear = (int) $approxYear;
+        }
+        if (is_int($approxYear) && $approxYear > 1800 && $approxYear < 2100) {
+            return Carbon::create($approxYear, 6, 1);
+        }
+
+        $occurredAt = Arr::get($attributes, 'occurred_at');
+        if (is_string($occurredAt) && $occurredAt !== '') {
+            try {
+                return Carbon::parse($occurredAt);
+            } catch (\Throwable) {
+                // fall through
+            }
+        }
+
+        return null;
     }
 }

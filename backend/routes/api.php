@@ -31,6 +31,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/sessions/{id}/extractions', [InterviewSessionController::class, 'extractions']);
         });
 
+        Route::get('/earth/catalog', [EarthController::class, 'catalog']);
+        Route::get('/earth/entities/{id}', [EarthController::class, 'show']);
         Route::get('/earth/timeline', [EarthController::class, 'timeline']);
         Route::get('/human/bridge', [HumanController::class, 'bridge']);
         Route::get('/sky/graph', [SkyController::class, 'graph']);

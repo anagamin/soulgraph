@@ -26,6 +26,15 @@ class SemanticExtractionService
 Типы сущностей: {$entityTypes}
 Слои (layer): {$layers} — в поле layer только одно слово: earth, human или sky.
 
+Для сущностей слоя earth (person, place, event, epoch, relationship) в attributes указывай:
+- approx_year — примерный год (число), если упомянут или выводим из контекста
+- occurred_at — ISO-дата (YYYY-MM-DD), если известна точная дата
+- life_period — жизненный период («детство», «школа», «1990-е» и т.п.), если год неизвестен
+- summary — 1–2 предложения: краткая сводка сущности из слов пользователя
+- description, role, context — дополнительные детали по смыслу
+
+Связи между людьми, местами и событиями: participated_in, located_in, involves, part_of.
+
 Каждый элемент массивов entities, relations и т.д. — JSON-объект с именованными полями (не массив значений подряд).
 
 Сообщение:
@@ -39,7 +48,11 @@ PROMPT;
                     'type' => 'person',
                     'layer' => 'earth',
                     'label' => 'string',
-                    'attributes' => [],
+                    'attributes' => [
+                        'approx_year' => 1995,
+                        'life_period' => 'детство',
+                        'summary' => 'string',
+                    ],
                     'confidence' => 0.9,
                 ],
             ],

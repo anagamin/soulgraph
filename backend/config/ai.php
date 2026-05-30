@@ -38,6 +38,10 @@ return [
     ],
 
     'autobiography' => [
+        'chat_model' => env('AUTOBIOGRAPHY_CHAT_MODEL'),
+        'fallback_chat_model' => env('AUTOBIOGRAPHY_FALLBACK_CHAT_MODEL', 'gpt-4o-mini'),
+        'reasoning_effort' => env('AUTOBIOGRAPHY_REASONING_EFFORT', 'low'),
+        'outline_max_tokens' => (int) env('AUTOBIOGRAPHY_OUTLINE_MAX_TOKENS', 8192),
         'context_limit' => (int) env('AUTOBIOGRAPHY_CONTEXT_LIMIT', 28000),
         'summary_max_chars' => (int) env('AUTOBIOGRAPHY_SUMMARY_MAX_CHARS', 400),
         'compact_summary_max_chars' => (int) env('AUTOBIOGRAPHY_COMPACT_SUMMARY_MAX_CHARS', 120),

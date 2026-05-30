@@ -10,5 +10,7 @@ readonly class ChatOptions
         public ?int $maxTokens = null,
         public ?string $responseFormat = null,
         public ?int $timeoutSeconds = null,
+        /** @var 'low'|'medium'|'high'|null OpenAI-style reasoning models only */
+        public ?string $reasoningEffort = null,
     ) {}
 }

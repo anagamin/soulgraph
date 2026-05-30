@@ -83,11 +83,18 @@ class AutobiographyGeneratorService
         ];
 
         $lastError = null;
+        $fallbackModel = config('ai.autobiography.fallback_chat_model');
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             try {
                 $response = $this->ai->chat(
                     $messages,
-                    $this->chatOptions(temperature: $attempt === 1 ? 0.5 : 0.7, maxTokens: 4096),
+                    $this->chatOptions(
+                        temperature: $attempt === 1 ? 0.5 : 0.7,
+                        maxTokens: (int) config('ai.autobiography.outline_max_tokens', 8192),
+                        model: $attempt === 2 && is_string($fallbackModel) && $fallbackModel !== ''
+                            ? $fallbackModel
+                            : null,
+                    ),
                 );
                 $content = trim($response->content);
                 if ($content !== '') {
@@ -333,11 +340,16 @@ class AutobiographyGeneratorService
         float $temperature = 0.8,
         int $maxTokens = 4096,
         ?int $timeoutSeconds = null,
+        ?string $model = null,
     ): ChatOptions {
+        $configuredModel = config('ai.autobiography.chat_model');
+
         return new ChatOptions(
+            model: $model ?? (is_string($configuredModel) && $configuredModel !== '' ? $configuredModel : null),
             temperature: $temperature,
             maxTokens: $maxTokens,
             timeoutSeconds: $timeoutSeconds,
+            reasoningEffort: config('ai.autobiography.reasoning_effort') ?: null,
         );
     }
 }

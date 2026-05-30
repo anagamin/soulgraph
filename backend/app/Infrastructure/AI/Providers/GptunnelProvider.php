@@ -202,10 +202,23 @@ class GptunnelProvider implements AiProviderInterface
     {
         $finish = (string) ($choice['finish_reason'] ?? 'unknown');
         $completion = $data['usage']['completion_tokens'] ?? '?';
+        $reasoning = $data['usage']['completion_tokens_details']['reasoning_tokens'] ?? null;
         $model = (string) ($data['model'] ?? config('ai.gptunnel.chat_model'));
 
         if ($finish === 'content_filter') {
             return 'Модель '.$model.' отклонила ответ (content_filter).';
+        }
+
+        if ($reasoning !== null && (int) $reasoning > 0 && $this->isReasoningModel($model)) {
+            $hint = ' У reasoning-моделей увеличьте max_completion_tokens или задайте reasoning_effort=low.';
+
+            if ($finish === 'length') {
+                return 'Модель '.$model.' исчерпала лимит на внутренние рассуждения (reasoning_tokens='
+                    .$reasoning.', finish_reason=length).'.$hint;
+            }
+
+            return 'Модель '.$model.' вернула пустой content (reasoning_tokens='
+                .$reasoning.', completion_tokens='.$completion.').'.$hint;
         }
 
         if ($finish === 'length' && (int) $completion === 0) {
@@ -217,14 +230,26 @@ class GptunnelProvider implements AiProviderInterface
 
     private function buildChatPayload(array $messages, ChatOptions $options): array
     {
+        $model = $options->model ?? config('ai.gptunnel.chat_model');
         $payload = [
-            'model' => $options->model ?? config('ai.gptunnel.chat_model'),
+            'model' => $model,
             'messages' => $messages,
-            'temperature' => $options->temperature,
         ];
 
+        if (! $this->isReasoningModel($model)) {
+            $payload['temperature'] = $options->temperature;
+        }
+
         if ($options->maxTokens) {
-            $payload['max_tokens'] = $options->maxTokens;
+            if ($this->isReasoningModel($model)) {
+                $payload['max_completion_tokens'] = $options->maxTokens;
+            } else {
+                $payload['max_tokens'] = $options->maxTokens;
+            }
+        }
+
+        if ($this->isReasoningModel($model) && $options->reasoningEffort) {
+            $payload['reasoning_effort'] = $options->reasoningEffort;
         }
 
         if ($options->responseFormat === 'json_object') {
@@ -232,5 +257,12 @@ class GptunnelProvider implements AiProviderInterface
         }
 
         return $payload;
+    }
+
+    private function isReasoningModel(string $model): bool
+    {
+        $normalized = strtolower($model);
+
+        return (bool) preg_match('/^(o\d|gpt-5)/', $normalized);
     }
 }

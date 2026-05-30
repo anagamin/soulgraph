@@ -15,6 +15,7 @@ class ExtractionNormalizationService
 {
     public function __construct(
         private EntityResolutionService $resolution,
+        private EntitySignificanceService $significance,
     ) {}
 
     /**
@@ -135,10 +136,45 @@ class ExtractionNormalizationService
             $this->handleReinterpretation($message, $item, $tempMap, $minConfidence);
         }
 
+        $this->applyUserStatedSignificance($message, $createdEntities);
+
         return [
             'entities' => $createdEntities,
             'relations' => $createdRelations,
         ];
+    }
+
+    /**
+     * @param  list<Entity>  $entities
+     */
+    private function applyUserStatedSignificance(Message $message, array $entities): void
+    {
+        if ($message->role !== 'user') {
+            return;
+        }
+
+        $rating = $this->significance->parseExplicitRating($message->content);
+        if ($rating === null) {
+            return;
+        }
+
+        $touched = collect($entities)->unique('id');
+
+        EntityVersion::query()
+            ->where('source_message_id', $message->id)
+            ->with('entity')
+            ->get()
+            ->pluck('entity')
+            ->filter()
+            ->each(fn (Entity $entity) => $touched->push($entity));
+
+        foreach ($touched->unique('id') as $entity) {
+            $this->significance->persistSignificance(
+                $entity,
+                $rating,
+                EntitySignificanceService::SOURCE_USER_STATED,
+            );
+        }
     }
 
     private function handleReinterpretation(

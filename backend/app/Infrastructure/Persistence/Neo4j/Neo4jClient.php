@@ -50,9 +50,9 @@ class Neo4jClient
         try {
             $cypher = 'MATCH (e:Entity {user_id: $user_id, active: true})
                  OPTIONAL MATCH (e)-[r:REL {active: true}]->(t:Entity)
-                 RETURN e.label AS label, e.type AS type, e.layer AS layer,
-                        collect(DISTINCT r.type + " -> " + t.label)[0..5] AS rels
-                 ORDER BY e.layer, e.label';
+                 WITH e, collect(DISTINCT CASE WHEN t IS NULL THEN NULL ELSE r.type + " -> " + t.label END)[0..5] AS rels
+                 ORDER BY e.layer, e.label
+                 RETURN e.label AS label, e.type AS type, e.layer AS layer, rels';
 
             $params = ['user_id' => $userId];
             if ($limit !== null) {

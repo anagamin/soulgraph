@@ -41,7 +41,15 @@ class SemanticExtractionService
 - occurred_at — ISO-дата (YYYY-MM-DD), если известна точная дата
 - life_period — жизненный период («детство», «школа», «1990-е» и т.п.), если год неизвестен
 - summary — 1–2 предложения: краткая сводка сущности из слов пользователя
+- life_significance — число 0.0–1.0: насколько тема важна для жизненной истории
+- life_significance_source — "user_stated" если пользователь явно оценил важность; иначе "ai_inferred"
 - description, role, context — дополнительные детали по смыслу
+
+Шкала life_significance при явной оценке пользователя (0–10 или слова):
+0–2 / «неважно» → 0.2; 3–4 → 0.4; 5–6 / «средне» → 0.6; 7–8 / «очень важно» → 0.85; 9–10 / «переломный момент» → 0.95.
+Без явной оценки: смерти, потери, эмиграция ≈ 0.9; бытовые детали ≈ 0.3.
+
+Для сущностей human и sky (emotion, identity, pattern, belief и т.д.) — тоже указывай life_significance, если тема звучит значимо.
 
 Для паттернов (pattern), убеждений (belief), идентичностей (identity) — обязательно summary.
 
@@ -65,6 +73,8 @@ PROMPT;
                         'approx_year' => 1995,
                         'life_period' => 'детство',
                         'summary' => 'string',
+                        'life_significance' => 0.85,
+                        'life_significance_source' => 'ai_inferred',
                     ],
                     'confidence' => 0.9,
                 ],

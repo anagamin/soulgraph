@@ -12,11 +12,6 @@ return [
         'timeout' => (int) env('GPTUNNEL_TIMEOUT', 120),
     ],
 
-    'extraction' => [
-        'prompt_version' => 'extraction/v2',
-        'min_confidence' => 0.3,
-    ],
-
     'deduplication' => [
         'keyed_types' => [
             'person', 'place', 'pattern', 'belief', 'value', 'identity',
@@ -29,11 +24,27 @@ return [
     ],
 
     'interview' => [
-        'prompt_version' => 'interview/v2',
+        'prompt_version' => 'interview/v3-significance',
+    ],
+
+    'extraction' => [
+        'prompt_version' => 'extraction/v3-significance',
+        'min_confidence' => 0.3,
     ],
 
     'psychologist' => [
         'prompt_version' => 'psychologist/v1',
         'context_limit' => 8000,
+    ],
+
+    'autobiography' => [
+        'context_limit' => (int) env('AUTOBIOGRAPHY_CONTEXT_LIMIT', 28000),
+        'summary_max_chars' => (int) env('AUTOBIOGRAPHY_SUMMARY_MAX_CHARS', 400),
+        'compact_summary_max_chars' => (int) env('AUTOBIOGRAPHY_COMPACT_SUMMARY_MAX_CHARS', 120),
+        'full_detail_min_score' => (float) env('AUTOBIOGRAPHY_FULL_DETAIL_MIN_SCORE', 0.55),
+        'multi_pass' => filter_var(env('AUTOBIOGRAPHY_MULTI_PASS', true), FILTER_VALIDATE_BOOLEAN),
+        'single_pass_max_entities' => (int) env('AUTOBIOGRAPHY_SINGLE_PASS_MAX_ENTITIES', 12),
+        'batch_size' => (int) env('AUTOBIOGRAPHY_BATCH_SIZE', 8),
+        'neighbors_per_seed' => (int) env('AUTOBIOGRAPHY_NEIGHBORS_PER_SEED', 4),
     ],
 ];

@@ -221,6 +221,21 @@ class EntityResolutionService
                 if (! str_contains($merged[$key], $value)) {
                     $merged[$key] = trim($merged[$key].' '.$value);
                 }
+            } elseif ($key === 'life_significance' && is_numeric($value)) {
+                $incoming = max(0.0, min(1.0, (float) $value));
+                $existing = is_numeric($merged[$key] ?? null) ? (float) $merged[$key] : 0.0;
+                $merged[$key] = max($existing, $incoming);
+            } elseif ($key === 'life_significance_source' && is_string($value)) {
+                $incoming = $value;
+                $existing = $merged[$key] ?? null;
+                if ($existing === EntitySignificanceService::SOURCE_USER_STATED && $incoming !== EntitySignificanceService::SOURCE_USER_STATED) {
+                    continue;
+                }
+                if ($incoming === EntitySignificanceService::SOURCE_USER_STATED) {
+                    $merged[$key] = EntitySignificanceService::SOURCE_USER_STATED;
+                } elseif ($existing === null || $existing === '') {
+                    $merged[$key] = $incoming;
+                }
             }
         }
 

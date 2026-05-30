@@ -74,4 +74,119 @@ class QdrantClient
     {
         Http::delete("{$this->baseUrl}/collections/{$name}");
     }
+
+    /**
+     * @return array{collections: list<array{name: string, points: list<array<string, mixed>>}>}
+     */
+    public function exportAllCollections(): array
+    {
+        $collections = [];
+        $response = Http::get("{$this->baseUrl}/collections");
+
+        if ($response->failed()) {
+            return ['collections' => []];
+        }
+
+        foreach ($response->json('result.collections') ?? [] as $item) {
+            $name = $item['name'] ?? null;
+            if (! $name || ! str_starts_with($name, 'user_')) {
+                continue;
+            }
+
+            $collections[] = [
+                'name' => $name,
+                'points' => $this->scrollAllPoints($name),
+            ];
+        }
+
+        return ['collections' => $collections];
+    }
+
+    /**
+     * @param  array{collections?: list<array{name: string, points: list<array<string, mixed>>}>}  $data
+     */
+    public function importCollections(array $data): void
+    {
+        foreach ($this->listUserCollectionNames() as $name) {
+            $this->deleteCollection($name);
+        }
+
+        foreach ($data['collections'] ?? [] as $collection) {
+            $name = $collection['name'] ?? null;
+            if (! $name) {
+                continue;
+            }
+
+            $this->ensureCollection($name);
+
+            foreach (array_chunk($collection['points'] ?? [], 100) as $chunk) {
+                if ($chunk === []) {
+                    continue;
+                }
+
+                Http::put("{$this->baseUrl}/collections/{$name}/points", [
+                    'points' => $chunk,
+                ])->throw();
+            }
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function listUserCollectionNames(): array
+    {
+        $response = Http::get("{$this->baseUrl}/collections");
+        if ($response->failed()) {
+            return [];
+        }
+
+        $names = [];
+        foreach ($response->json('result.collections') ?? [] as $item) {
+            $name = $item['name'] ?? null;
+            if ($name && str_starts_with($name, 'user_')) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function scrollAllPoints(string $collection): array
+    {
+        $points = [];
+        $offset = null;
+
+        do {
+            $body = [
+                'limit' => 100,
+                'with_vector' => true,
+                'with_payload' => true,
+            ];
+            if ($offset !== null) {
+                $body['offset'] = $offset;
+            }
+
+            $response = Http::post("{$this->baseUrl}/collections/{$collection}/points/scroll", $body);
+            if ($response->failed()) {
+                break;
+            }
+
+            $result = $response->json('result') ?? [];
+            foreach ($result['points'] ?? [] as $point) {
+                $points[] = [
+                    'id' => $point['id'],
+                    'vector' => $point['vector'],
+                    'payload' => $point['payload'] ?? [],
+                ];
+            }
+
+            $offset = $result['next_page_offset'] ?? null;
+        } while ($offset !== null);
+
+        return $points;
+    }
 }

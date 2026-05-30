@@ -20,3 +20,21 @@ MySQL is canonical. Neo4j and Qdrant are projections, rebuildable via `php artis
 ## AI
 
 `AiProviderInterface` → `GptunnelProvider` (OpenAI-compatible).
+
+## Snapshots (rollback)
+
+Before risky experiments, save a full slice (MySQL canonical data + Neo4j + Qdrant projections):
+
+```bash
+cd backend
+php artisan soulgraph:dump-snapshot
+# or: ../scripts/dump-snapshot.ps1
+```
+
+Restore (replaces all SoulGraph data in the three stores):
+
+```bash
+php artisan soulgraph:restore-snapshot storage/snapshots/2026-05-30_143022 --force
+```
+
+Snapshots live under `backend/storage/snapshots/` (gitignored).

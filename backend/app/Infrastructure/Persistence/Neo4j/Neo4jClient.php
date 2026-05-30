@@ -133,6 +133,91 @@ class Neo4jClient
         $this->run('MATCH (e:Entity {user_id: $user_id}) DETACH DELETE e', ['user_id' => $userId]);
     }
 
+    /**
+     * @return array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>}
+     */
+    public function exportGraph(): array
+    {
+        $nodesResult = $this->run(
+            'MATCH (e:Entity)
+             RETURN e.mysql_id AS mysql_id, e.user_id AS user_id, e.type AS type,
+                    e.layer AS layer, e.label AS label, e.confidence AS confidence,
+                    e.active AS active',
+        );
+
+        $nodes = [];
+        foreach ($nodesResult['results'][0]['data'] ?? [] as $row) {
+            $row = $row['row'] ?? [];
+            if (! ($row[0] ?? null)) {
+                continue;
+            }
+            $nodes[] = [
+                'mysql_id' => $row[0],
+                'user_id' => $row[1],
+                'type' => $row[2],
+                'layer' => $row[3],
+                'label' => $row[4],
+                'confidence' => $row[5],
+                'active' => $row[6],
+            ];
+        }
+
+        $edgesResult = $this->run(
+            'MATCH (a:Entity)-[r:REL]->(b:Entity)
+             RETURN r.mysql_id AS mysql_id, a.mysql_id AS source_id, b.mysql_id AS target_id,
+                    r.type AS type, r.confidence AS confidence, r.active AS active',
+        );
+
+        $edges = [];
+        foreach ($edgesResult['results'][0]['data'] ?? [] as $row) {
+            $row = $row['row'] ?? [];
+            if (! ($row[0] ?? null)) {
+                continue;
+            }
+            $edges[] = [
+                'mysql_id' => $row[0],
+                'source_id' => $row[1],
+                'target_id' => $row[2],
+                'type' => $row[3],
+                'confidence' => $row[4],
+                'active' => $row[5],
+            ];
+        }
+
+        return ['nodes' => $nodes, 'edges' => $edges];
+    }
+
+    /**
+     * @param  array{nodes?: list<array<string, mixed>>, edges?: list<array<string, mixed>>}  $data
+     */
+    public function importGraph(array $data): void
+    {
+        $this->run('MATCH (e:Entity) DETACH DELETE e');
+
+        foreach ($data['nodes'] ?? [] as $node) {
+            $this->upsertEntityNode([
+                'mysql_id' => $node['mysql_id'],
+                'user_id' => (string) ($node['user_id'] ?? ''),
+                'type' => $node['type'],
+                'layer' => $node['layer'],
+                'label' => $node['label'],
+                'confidence' => $node['confidence'] ?? 0.5,
+                'active' => $node['active'] ?? true,
+            ]);
+        }
+
+        foreach ($data['edges'] ?? [] as $edge) {
+            $this->upsertRelation([
+                'mysql_id' => $edge['mysql_id'],
+                'source_id' => $edge['source_id'],
+                'target_id' => $edge['target_id'],
+                'type' => $edge['type'],
+                'confidence' => $edge['confidence'] ?? 0.5,
+                'active' => $edge['active'] ?? true,
+            ]);
+        }
+    }
+
     public function rebuildUserGraph(string $userId, array $entities, array $relations): void
     {
         $this->deleteUserGraph($userId);

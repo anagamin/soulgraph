@@ -12,7 +12,8 @@ class HumanController extends Controller
 {
     public function bridge(Request $request): JsonResponse
     {
-        $entities = Entity::where('user_id', $request->user()->id)
+        $entities = Entity::canonical()
+            ->where('user_id', $request->user()->id)
             ->whereIn('layer', ['human', 'earth'])
             ->with(['versions' => fn ($q) => $q->where('is_active', true)])
             ->get();

@@ -8,12 +8,15 @@ use App\Models\EntityVersion;
 use App\Models\Message;
 use App\Models\Relation;
 use App\Models\RelationVersion;
-use Carbon\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 class ExtractionNormalizationService
 {
+    public function __construct(
+        private EntityResolutionService $resolution,
+    ) {}
+
     /**
      * @return array{entities: array, relations: array}
      */
@@ -39,36 +42,43 @@ class ExtractionNormalizationService
             }
 
             $tempId = Arr::get($item, 'temp_id');
-            $type = Arr::get($item, 'type');
-            $layer = Arr::get($item, 'layer');
-            $label = Arr::get($item, 'label');
-            if (! $tempId || ! $type || ! $layer || ! $label) {
+            if (! $tempId) {
                 continue;
             }
 
-            $entity = Entity::create([
-                'user_id' => $message->user_id,
-                'type' => $type,
-                'layer' => $layer,
-                'canonical_label' => $label,
-            ]);
-
-            $attributes = Arr::get($item, 'attributes', ['label' => $label]);
-            if (! is_array($attributes)) {
-                $attributes = ['label' => $label];
+            $entity = $this->resolution->resolveOrCreate($message, $item);
+            if (! $entity) {
+                continue;
             }
-
-            EntityVersion::create([
-                'entity_id' => $entity->id,
-                'source_message_id' => $message->id,
-                'valid_from' => $this->resolveValidFrom($attributes) ?? now(),
-                'payload' => $attributes,
-                'confidence' => $this->confidence($item),
-                'is_active' => true,
-            ]);
 
             $tempMap[$tempId] = $entity->id;
             $createdEntities[] = $entity->load('versions');
+        }
+
+        foreach ($extraction->patterns as $index => $pattern) {
+            if (! is_array($pattern) || $this->confidence($pattern) < $minConfidence) {
+                continue;
+            }
+
+            $description = Arr::get($pattern, 'description');
+            if (! is_string($description) || trim($description) === '') {
+                continue;
+            }
+
+            $tempId = 'pattern_'.$index;
+            $entity = $this->resolution->resolveOrCreate($message, [
+                'temp_id' => $tempId,
+                'type' => 'pattern',
+                'layer' => 'sky',
+                'label' => trim($description),
+                'attributes' => ['summary' => trim($description)],
+                'confidence' => $this->confidence($pattern),
+            ]);
+
+            if ($entity) {
+                $tempMap[$tempId] = $entity->id;
+                $createdEntities[] = $entity->load('versions');
+            }
         }
 
         $createdRelations = [];
@@ -87,6 +97,16 @@ class ExtractionNormalizationService
             $sourceId = Arr::get($tempMap, $from);
             $targetId = Arr::get($tempMap, $to);
             if (! $sourceId || ! $targetId) {
+                continue;
+            }
+
+            $existing = Relation::where('user_id', $message->user_id)
+                ->where('type', $relationType)
+                ->where('source_entity_id', $sourceId)
+                ->where('target_entity_id', $targetId)
+                ->exists();
+
+            if ($existing) {
                 continue;
             }
 
@@ -167,42 +187,19 @@ class ExtractionNormalizationService
         $evolvesFrom = Arr::get($item, 'evolves_from_temp_id');
         $targetEntityId = $evolvesFrom ? Arr::get($tempMap, $evolvesFrom) : null;
         if ($targetEntityId) {
-            Relation::create([
-                'user_id' => $message->user_id,
-                'type' => 'evolves_into',
-                'source_entity_id' => $entity->id,
-                'target_entity_id' => $targetEntityId,
-            ]);
+            Relation::firstOrCreate(
+                [
+                    'user_id' => $message->user_id,
+                    'type' => 'evolves_into',
+                    'source_entity_id' => $entity->id,
+                    'target_entity_id' => $targetEntityId,
+                ],
+            );
         }
     }
 
     private function confidence(array $item): float
     {
         return (float) Arr::get($item, 'confidence', 0.5);
-    }
-
-    /**
-     * @param  array<string, mixed>  $attributes
-     */
-    private function resolveValidFrom(array $attributes): ?Carbon
-    {
-        $approxYear = Arr::get($attributes, 'approx_year');
-        if (is_string($approxYear) && is_numeric($approxYear)) {
-            $approxYear = (int) $approxYear;
-        }
-        if (is_int($approxYear) && $approxYear > 1800 && $approxYear < 2100) {
-            return Carbon::create($approxYear, 6, 1);
-        }
-
-        $occurredAt = Arr::get($attributes, 'occurred_at');
-        if (is_string($occurredAt) && $occurredAt !== '') {
-            try {
-                return Carbon::parse($occurredAt);
-            } catch (\Throwable) {
-                // fall through
-            }
-        }
-
-        return null;
     }
 }

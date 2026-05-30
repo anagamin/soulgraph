@@ -16,7 +16,7 @@ readonly class ExtractionResult
     {
         return new self(
             entities: self::normalizeRecords($data['entities'] ?? [], [
-                'temp_id', 'type', 'layer', 'label', 'attributes', 'confidence',
+                'temp_id', 'match_entity_id', 'type', 'layer', 'label', 'attributes', 'confidence',
             ]),
             relations: self::normalizeRecords($data['relations'] ?? [], [
                 'from', 'to', 'type', 'confidence',

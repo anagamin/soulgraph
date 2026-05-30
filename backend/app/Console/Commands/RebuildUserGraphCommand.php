@@ -18,7 +18,7 @@ class RebuildUserGraphCommand extends Command
     {
         $user = User::findOrFail($this->argument('userId'));
 
-        $entities = Entity::where('user_id', $user->id)->with(['versions'])->get();
+        $entities = Entity::canonical()->where('user_id', $user->id)->with(['versions'])->get();
         $relations = Relation::where('user_id', $user->id)->with(['versions'])->get();
 
         $neo4j->rebuildUserGraph((string) $user->id, $entities->all(), $relations->all());

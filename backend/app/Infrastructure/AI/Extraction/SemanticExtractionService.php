@@ -2,6 +2,7 @@
 
 namespace App\Infrastructure\AI\Extraction;
 
+use App\Application\Services\KnownEntitiesProvider;
 use App\Infrastructure\AI\Contracts\AiProviderInterface;
 use App\Infrastructure\AI\DTOs\ExtractOptions;
 use App\Infrastructure\AI\DTOs\ExtractionResult;
@@ -12,12 +13,14 @@ class SemanticExtractionService
     public function __construct(
         private AiProviderInterface $ai,
         private AiLogWriter $logger,
+        private KnownEntitiesProvider $knownEntities,
     ) {}
 
     public function extractFromMessage(string $content, int $userId): ExtractionResult
     {
         $entityTypes = 'person, place, event, epoch, emotion, interpretation, motivation, fear, identity, pattern, belief, value, goal, practice, relationship';
         $layers = 'earth (facts: people, places, events), human (inner: emotions, motivations), sky (meaning: identity, beliefs, patterns)';
+        $known = $this->knownEntities->formatForPrompt($userId);
 
         $prompt = <<<PROMPT
 Извлеки семантические сущности и связи из сообщения пользователя.
@@ -26,12 +29,21 @@ class SemanticExtractionService
 Типы сущностей: {$entityTypes}
 Слои (layer): {$layers} — в поле layer только одно слово: earth, human или sky.
 
+=== Уже известные сущности пользователя ===
+{$known}
+
+Если новая сущность — это уже известная (другая формулировка, синоним, тот же человек/место/паттерн),
+укажи match_entity_id (UUID из списка выше) и не создавай дубликат.
+Если это новая сущность — match_entity_id = null.
+
 Для сущностей слоя earth (person, place, event, epoch, relationship) в attributes указывай:
 - approx_year — примерный год (число), если упомянут или выводим из контекста
 - occurred_at — ISO-дата (YYYY-MM-DD), если известна точная дата
 - life_period — жизненный период («детство», «школа», «1990-е» и т.п.), если год неизвестен
 - summary — 1–2 предложения: краткая сводка сущности из слов пользователя
 - description, role, context — дополнительные детали по смыслу
+
+Для паттернов (pattern), убеждений (belief), идентичностей (identity) — обязательно summary.
 
 Связи между людьми, местами и событиями: participated_in, located_in, involves, part_of.
 
@@ -45,6 +57,7 @@ PROMPT;
             'entities' => [
                 [
                     'temp_id' => 'e1',
+                    'match_entity_id' => null,
                     'type' => 'person',
                     'layer' => 'earth',
                     'label' => 'string',

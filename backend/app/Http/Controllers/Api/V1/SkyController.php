@@ -24,7 +24,8 @@ class SkyController extends Controller
 
     public function patterns(Request $request): JsonResponse
     {
-        $patterns = Entity::where('user_id', $request->user()->id)
+        $patterns = Entity::canonical()
+            ->where('user_id', $request->user()->id)
             ->where('type', 'pattern')
             ->with(['versions' => fn ($q) => $q->where('is_active', true)])
             ->get()
@@ -40,7 +41,8 @@ class SkyController extends Controller
 
     private function fallbackFromMysql(Request $request): array
     {
-        $entities = Entity::where('user_id', $request->user()->id)
+        $entities = Entity::canonical()
+            ->where('user_id', $request->user()->id)
             ->where('layer', 'sky')
             ->with(['versions' => fn ($q) => $q->where('is_active', true)])
             ->get();

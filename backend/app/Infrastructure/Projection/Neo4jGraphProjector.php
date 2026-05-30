@@ -16,6 +16,10 @@ class Neo4jGraphProjector
 
     public function projectEntity(Entity $entity): void
     {
+        if (! $entity->isCanonical()) {
+            return;
+        }
+
         try {
             $version = $entity->versions()->where('is_active', true)->latest('valid_from')->first();
             $this->neo4j->upsertEntityNode([

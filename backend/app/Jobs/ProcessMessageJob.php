@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Application\Services\ExtractionNormalizationService;
 use App\Infrastructure\AI\Extraction\SemanticExtractionService;
 use App\Infrastructure\Logging\JobLogWriter;
+use App\Infrastructure\Projection\EntityEmbeddingProjector;
 use App\Infrastructure\Projection\Neo4jGraphProjector;
 use App\Infrastructure\Projection\QdrantEmbeddingProjector;
 use App\Models\Message;
@@ -23,6 +24,7 @@ class ProcessMessageJob implements ShouldQueue
         ExtractionNormalizationService $normalizer,
         Neo4jGraphProjector $graphProjector,
         QdrantEmbeddingProjector $embeddingProjector,
+        EntityEmbeddingProjector $entityEmbeddingProjector,
         JobLogWriter $jobLog,
     ): void {
         $started = microtime(true);
@@ -54,6 +56,7 @@ class ProcessMessageJob implements ShouldQueue
 
             foreach ($normalized['entities'] as $entity) {
                 $graphProjector->projectEntity($entity);
+                $entityEmbeddingProjector->embedEntity($entity);
             }
             foreach ($normalized['relations'] as $relation) {
                 $graphProjector->projectRelation($relation);

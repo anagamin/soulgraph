@@ -28,7 +28,8 @@ class ContextAssemblyService
             $parts[] = "=== Граф контекста ===\n{$graphContext}";
         }
 
-        $entities = Entity::where('user_id', $user->id)
+        $entities = Entity::canonical()
+            ->where('user_id', $user->id)
             ->with(['versions' => fn ($q) => $q->where('is_active', true)])
             ->limit(15)
             ->get();

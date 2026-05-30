@@ -13,8 +13,19 @@ return [
     ],
 
     'extraction' => [
-        'prompt_version' => 'extraction/v1',
+        'prompt_version' => 'extraction/v2',
         'min_confidence' => 0.3,
+    ],
+
+    'deduplication' => [
+        'keyed_types' => [
+            'person', 'place', 'pattern', 'belief', 'value', 'identity',
+            'fear', 'emotion', 'interpretation', 'motivation', 'goal',
+            'practice', 'relationship', 'event', 'epoch',
+        ],
+        'auto_merge_threshold' => 0.92,
+        'suggest_threshold' => 0.80,
+        'label_similarity_threshold' => 0.88,
     ],
 
     'interview' => [

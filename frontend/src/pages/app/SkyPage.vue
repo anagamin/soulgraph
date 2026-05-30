@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import cytoscape, { type NodeSingular } from 'cytoscape'
 import coseBilkent from 'cytoscape-cose-bilkent'
 import api from '@/shared/api/client'
+import MergeCandidatesBanner from '@/features/entities/MergeCandidatesBanner.vue'
 
 cytoscape.use(coseBilkent)
 
@@ -66,7 +67,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="grid gap-4 lg:grid-cols-4">
+  <div>
+    <MergeCandidatesBanner />
+    <div class="grid gap-4 lg:grid-cols-4">
     <div ref="container" class="glass h-[calc(100vh-10rem)] rounded-2xl lg:col-span-3" />
     <aside class="glass rounded-2xl p-4">
       <h3 class="text-sm text-sky-400">Паттерны</h3>
@@ -77,5 +80,6 @@ onMounted(async () => {
         <li v-if="!patterns.length" class="text-zinc-600">Паттерны появятся по мере интервью</li>
       </ul>
     </aside>
+    </div>
   </div>
 </template>

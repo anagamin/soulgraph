@@ -3,6 +3,7 @@
 namespace App\Application\Services;
 
 use App\Models\Entity;
+use App\Models\EntityVersion;
 use App\Models\Message;
 use App\Models\Relation;
 use Carbon\Carbon;
@@ -28,7 +29,8 @@ class EarthCatalogService
 
     public function catalog(int $userId): array
     {
-        $entities = Entity::where('user_id', $userId)
+        $entities = Entity::canonical()
+            ->where('user_id', $userId)
             ->where('layer', 'earth')
             ->with(['versions' => fn ($q) => $q->where('is_active', true)])
             ->get();
@@ -56,7 +58,8 @@ class EarthCatalogService
 
     public function entityDetail(int $userId, string $entityId): ?array
     {
-        $entity = Entity::where('user_id', $userId)
+        $entity = Entity::canonical()
+            ->where('user_id', $userId)
             ->where('layer', 'earth')
             ->with(['versions' => fn ($q) => $q->where('is_active', true)])
             ->find($entityId);
@@ -65,7 +68,11 @@ class EarthCatalogService
             return null;
         }
 
-        $messageIds = $entity->versions->pluck('source_message_id')->filter()->unique();
+        $familyIds = $entity->familyIds();
+        $messageIds = EntityVersion::whereIn('entity_id', $familyIds)
+            ->pluck('source_message_id')
+            ->filter()
+            ->unique();
 
         $phrases = Message::where('user_id', $userId)
             ->whereIn('id', $messageIds)
@@ -91,7 +98,7 @@ class EarthCatalogService
         $related = $relations->map(function (Relation $r) use ($entity) {
             $isOutgoing = $r->source_entity_id === $entity->id;
             $other = $isOutgoing ? $r->targetEntity : $r->sourceEntity;
-            if (! $other || $other->layer !== 'earth') {
+            if (! $other || $other->layer !== 'earth' || ! $other->isCanonical()) {
                 return null;
             }
 

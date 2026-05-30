@@ -11,6 +11,7 @@ import {
   ENTITY_TYPE_LABELS,
   RELATION_TYPE_LABELS,
 } from '@/features/earth/types'
+import MergeCandidatesBanner from '@/features/entities/MergeCandidatesBanner.vue'
 
 const loading = ref(true)
 const catalog = ref<EarthCatalog | null>(null)
@@ -94,7 +95,9 @@ onMounted(loadCatalog)
 </script>
 
 <template>
-  <div class="earth-layout">
+  <div>
+    <MergeCandidatesBanner @merged="loadCatalog" />
+    <div class="earth-layout">
     <section class="glass earth-main">
       <header class="earth-header">
         <div>
@@ -268,6 +271,7 @@ onMounted(loadCatalog)
         </section>
       </template>
     </aside>
+    </div>
   </div>
 </template>
 

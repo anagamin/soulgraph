@@ -49,15 +49,52 @@ class QdrantClient
      */
     public function search(int $userId, string $collectionSuffix, string $query, int $limit = 8): array
     {
-        $collection = $this->userCollection($userId, $collectionSuffix);
+        return [];
+    }
 
+    /**
+     * @param  list<array<string, mixed>>|null  $filterMust
+     * @return list<array{entity_id: string, score: float, payload: array<string, mixed>}>
+     */
+    public function searchByVector(string $collection, array $vector, int $limit = 5, ?array $filter = null): array
+    {
         try {
             $this->ensureCollection($collection);
         } catch (\Throwable) {
             return [];
         }
 
-        return [];
+        $body = [
+            'vector' => $vector,
+            'limit' => $limit,
+            'with_payload' => true,
+        ];
+
+        if ($filter && isset($filter['must'])) {
+            $body['filter'] = ['must' => $filter['must']];
+        }
+
+        $response = Http::post("{$this->baseUrl}/collections/{$collection}/points/search", $body);
+        if ($response->failed()) {
+            return [];
+        }
+
+        $results = [];
+        foreach ($response->json('result') ?? [] as $point) {
+            $payload = $point['payload'] ?? [];
+            $entityId = $payload['entity_id'] ?? null;
+            if (! $entityId) {
+                continue;
+            }
+
+            $results[] = [
+                'entity_id' => (string) $entityId,
+                'score' => (float) ($point['score'] ?? 0),
+                'payload' => $payload,
+            ];
+        }
+
+        return $results;
     }
 
     public function userCollection(int $userId, string $suffix): string

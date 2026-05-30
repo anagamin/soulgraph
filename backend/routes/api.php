@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\AutobiographyController;
 use App\Http\Controllers\Api\V1\DebugController;
 use App\Http\Controllers\Api\V1\EarthController;
+use App\Http\Controllers\Api\V1\EntityMergeController;
 use App\Http\Controllers\Api\V1\HumanController;
 use App\Http\Controllers\Api\V1\InterviewSessionController;
 use App\Http\Controllers\Api\V1\PsychologistController;
@@ -34,6 +35,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/earth/catalog', [EarthController::class, 'catalog']);
         Route::get('/earth/entities/{id}', [EarthController::class, 'show']);
         Route::get('/earth/timeline', [EarthController::class, 'timeline']);
+
+        Route::get('/entities/merge-candidates', [EntityMergeController::class, 'candidates']);
+        Route::post('/entities/merge-candidates/{id}/accept', [EntityMergeController::class, 'accept']);
+        Route::post('/entities/merge-candidates/{id}/reject', [EntityMergeController::class, 'reject']);
+        Route::post('/entities/{canonicalId}/merge/{duplicateId}', [EntityMergeController::class, 'merge']);
         Route::get('/human/bridge', [HumanController::class, 'bridge']);
         Route::get('/sky/graph', [SkyController::class, 'graph']);
         Route::get('/sky/patterns', [SkyController::class, 'patterns']);
